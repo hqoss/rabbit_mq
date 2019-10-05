@@ -1,8 +1,6 @@
 defmodule MQ.Supervisor do
   alias MQ.{ConnectionManager, ConsumerPool}
 
-  require Logger
-
   use Supervisor
 
   @consumer_opts ~w(module workers prefetch_count queue)a
@@ -11,8 +9,6 @@ defmodule MQ.Supervisor do
 
   @spec start_link(list()) :: Supervisor.on_start()
   def start_link(opts \\ []) when is_list(opts) do
-    Logger.info("Starting Supervisor..")
-
     Supervisor.start_link(@this_module, opts, name: @this_module)
   end
 

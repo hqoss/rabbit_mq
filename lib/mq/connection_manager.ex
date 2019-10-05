@@ -22,9 +22,7 @@ defmodule MQ.ConnectionManager do
 
   @spec request_channel(atom()) :: {:ok, Channel.t()} | {:error, any()}
   def request_channel(server_name) when is_atom(server_name) do
-    ExponentialBackoff.with_backoff(fn ->
-      GenServer.call(@this_module, {:request_channel, server_name, :normal})
-    end)
+    GenServer.call(@this_module, {:request_channel, server_name, :normal})
   end
 
   @doc """
@@ -32,17 +30,14 @@ defmodule MQ.ConnectionManager do
   """
   @spec request_confirm_channel(atom()) :: {:ok, Channel.t()} | {:error, any()}
   def request_confirm_channel(server_name) when is_atom(server_name) do
-    ExponentialBackoff.with_backoff(fn ->
-      GenServer.call(@this_module, {:request_channel, server_name, :confirm})
-    end)
+    GenServer.call(@this_module, {:request_channel, server_name, :confirm})
   end
 
   @impl true
   def init(%State{} = initial_state) do
     :ok = ChannelRegistry.init()
-    _ = connect()
-
-    {:ok, initial_state}
+    {:ok, %Connection{} = connection} = connect()
+    {:ok, %{initial_state | connection: connection}}
   end
 
   @impl true
@@ -71,18 +66,6 @@ defmodule MQ.ConnectionManager do
   end
 
   @impl true
-  def handle_info({:connect, next_backoff}, %State{} = state) do
-    case open_connection(next_backoff) do
-      {:ok, %Connection{} = connection} ->
-        monitor_connection(connection)
-        {:noreply, %{state | connection: connection}}
-
-      _ ->
-        {:noreply, state}
-    end
-  end
-
-  @impl true
   def handle_info({:DOWN, _, :process, _pid, reason}, _state) do
     Logger.error("Connection to #{@amqp_url} lost due to #{inspect(reason)}.")
 
@@ -90,30 +73,19 @@ defmodule MQ.ConnectionManager do
     {:stop, {:connection_lost, reason}, %State{}}
   end
 
-  defp connect(prev \\ 0, current \\ 1) when is_integer(prev) and is_integer(current) do
-    {timeout_ms, _current, _next} =
-      next_backoff = ExponentialBackoff.calc_timeout_ms(prev, current)
+  defp connect do
+    ExponentialBackoff.with_backoff(fn ->
+      case Connection.open(@amqp_url) do
+        {:ok, %Connection{} = connection} = reply ->
+          Logger.debug("Connected to #{@amqp_url}.")
+          _ = monitor_connection(connection)
+          reply
 
-    Process.send_after(self(), {:connect, next_backoff}, timeout_ms)
-  end
-
-  defp open_connection({timeout_ms, current, next}) do
-    # TODO make amqp_url configurable
-    case Connection.open(@amqp_url) do
-      {:ok, %Connection{}} = reply ->
-        Logger.info("Connected to #{@amqp_url}.")
-        reply
-
-      {:error, error} = reply ->
-        Logger.error(
-          "Failed to connect to #{@amqp_url} due to #{inspect(error)}. Reconnecting in #{
-            timeout_ms
-          }ms."
-        )
-
-        connect(current, next)
-        reply
-    end
+        error ->
+          Logger.error("Error connecting to #{@amqp_url}: #{inspect(error)}. Retrying...")
+          error
+      end
+    end)
   end
 
   defp open_channel(%Connection{} = connection, server_name, :confirm) do
@@ -139,7 +111,5 @@ defmodule MQ.ConnectionManager do
   # and exit the process cleanly.
   #
   # See how we handle `{:DOWN, _, :process, _pid, reason}`.
-  defp monitor_connection(%Connection{pid: pid}) do
-    Process.monitor(pid)
-  end
+  defp monitor_connection(%Connection{pid: pid}), do: Process.monitor(pid)
 end
