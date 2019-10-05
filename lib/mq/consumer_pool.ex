@@ -1,8 +1,5 @@
 defmodule MQ.ConsumerPool do
-  alias Core.Name
   alias MQ.Consumer
-
-  require Logger
 
   use Supervisor
 
@@ -11,8 +8,6 @@ defmodule MQ.ConsumerPool do
   @spec start_link(list()) :: Supervisor.on_start()
   def start_link(opts \\ []) when is_list(opts) do
     module = opts |> Keyword.fetch!(:module)
-
-    Logger.info("Starting #{module} Consumer Pool..")
 
     # Consumer pools need to be named as there will often be more than one.
     Supervisor.start_link(@this_module, opts, name: module)

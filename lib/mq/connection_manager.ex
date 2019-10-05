@@ -16,8 +16,6 @@ defmodule MQ.ConnectionManager do
 
   @spec start_link(list()) :: GenServer.on_start()
   def start_link(_opts) do
-    Logger.info("Starting Connection Manager...")
-
     # `name: @this_module` makes it callable via the module name.
     GenServer.start_link(@this_module, %State{}, name: @this_module)
   end
@@ -75,7 +73,7 @@ defmodule MQ.ConnectionManager do
   @impl true
   def handle_info({:connect, next_backoff}, %State{} = state) do
     case open_connection(next_backoff) do
-      {:ok, %Connection{pid: pid} = connection} ->
+      {:ok, %Connection{} = connection} ->
         monitor_connection(connection)
         {:noreply, %{state | connection: connection}}
 
@@ -102,7 +100,7 @@ defmodule MQ.ConnectionManager do
   defp open_connection({timeout_ms, current, next}) do
     # TODO make amqp_url configurable
     case Connection.open(@amqp_url) do
-      {:ok, %Connection{pid: pid} = connection} = reply ->
+      {:ok, %Connection{}} = reply ->
         Logger.info("Connected to #{@amqp_url}.")
         reply
 

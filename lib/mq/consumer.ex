@@ -7,7 +7,6 @@ defmodule MQ.Consumer do
 
   use GenServer
 
-  @retry_request_channel_after_ms 2_750
   @this_module __MODULE__
 
   defmodule State do
@@ -26,10 +25,8 @@ defmodule MQ.Consumer do
     queue = opts |> Keyword.fetch!(:queue)
     prefetch_count = opts |> Keyword.fetch!(:prefetch_count)
 
+    # This server will be pooled, so the name needs to be unique.
     worker_name = module |> Name.module_to_snake_case() |> Name.unique_worker_name()
-
-    Logger.metadata(worker_name: worker_name)
-    Logger.info("Starting Consumer...")
 
     GenServer.start_link(
       @this_module,

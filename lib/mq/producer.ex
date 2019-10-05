@@ -26,9 +26,6 @@ defmodule MQ.Producer do
         # Poolboy requires the names to be unique.
         worker_name = @this_module |> Name.module_to_snake_case() |> Name.unique_worker_name()
 
-        Logger.metadata(worker_name: worker_name)
-        Logger.info("Starting Producer...")
-
         GenServer.start_link(@this_module, %State{worker_name: worker_name}, name: worker_name)
       end
 
