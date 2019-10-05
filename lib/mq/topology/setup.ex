@@ -96,12 +96,17 @@ defmodule MQ.Topology.Setup do
   end
 
   defp result(queue, %QueueConfig{binding: {exchange, _queue, routing_key}} = config) do
-    config
-    |> Map.take([:durable, :exclusive, :args])
-    |> Map.merge(%{
-      exchange: exchange,
-      queue: queue,
-      routing_key: routing_key
-    })
+    result =
+      config
+      |> Map.take([:durable, :exclusive, :args])
+      |> Map.merge(%{
+        exchange: exchange,
+        queue: queue,
+        routing_key: routing_key
+      })
+
+    Logger.debug("Declared #{queue} queue: #{inspect(result)}")
+
+    result
   end
 end

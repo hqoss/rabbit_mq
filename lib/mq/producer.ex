@@ -39,7 +39,7 @@ defmodule MQ.Producer do
         overflow = opts |> Keyword.fetch!(:worker_overflow)
 
         %{
-          id: Name.random_id() |> String.to_atom(),
+          id: @this_module,
           start:
             {:poolboy, :start_link,
              [
@@ -67,7 +67,7 @@ defmodule MQ.Producer do
 
       @impl true
       def init(%State{} = initial_state) do
-        request_channel()
+        request_confirm_channel()
         {:ok, initial_state}
       end
 
@@ -94,25 +94,14 @@ defmodule MQ.Producer do
       end
 
       @impl true
-      def handle_info(:request_channel, %State{worker_name: worker_name} = state) do
+      def handle_info(:request_confirm_channel, %State{worker_name: worker_name} = state) do
         Logger.metadata(worker_name: worker_name)
+        Logger.debug("Requesting a confirm channel for #{worker_name}.")
 
         # See https://hexdocs.pm/amqp/AMQP.Confirm.html for more details.
-        case ConnectionManager.request_confirm_channel(worker_name) do
-          {:ok, %Channel{} = channel} ->
-            monitor_connection(channel)
-            {:noreply, %{state | channel: channel}}
-
-          error ->
-            Logger.error(
-              "Cannot retrieve channel due to #{inspect(error)}, retyring in #{
-                @retry_request_channel_after_ms
-              }ms."
-            )
-
-            request_channel(@retry_request_channel_after_ms)
-            {:noreply, state}
-        end
+        {:ok, %Channel{} = channel} = ConnectionManager.request_confirm_channel(worker_name)
+        monitor_connection(channel)
+        {:noreply, %{state | channel: channel}}
       end
 
       @impl true
@@ -127,17 +116,13 @@ defmodule MQ.Producer do
         {:stop, {:connection_lost, reason}, state}
       end
 
-      defp request_channel(timeout_ms \\ 0) when is_integer(timeout_ms) do
-        Process.send_after(self(), :request_channel, timeout_ms)
-      end
+      defp request_confirm_channel, do: Process.send_after(self(), :request_confirm_channel, 0)
 
       # We will get notified when the connection is down
       # and exit the process cleanly.
       #
       # See how we handle `{:DOWN, _, :process, _pid, reason}`.
-      defp monitor_connection(%Channel{conn: %Connection{pid: pid}}) do
-        Process.monitor(pid)
-      end
+      defp monitor_connection(%Channel{conn: %Connection{pid: pid}}), do: Process.monitor(pid)
     end
   end
 

@@ -22,12 +22,11 @@ defmodule MQ.Consumer do
 
   @spec start_link(list()) :: GenServer.on_start()
   def start_link(opts \\ []) when is_list(opts) do
-    pool_name = opts |> Keyword.fetch!(:pool_name)
     module = opts |> Keyword.fetch!(:module)
     queue = opts |> Keyword.fetch!(:queue)
     prefetch_count = opts |> Keyword.fetch!(:prefetch_count)
 
-    worker_name = pool_name |> Name.unique_worker_name()
+    worker_name = module |> Name.module_to_snake_case() |> Name.unique_worker_name()
 
     Logger.metadata(worker_name: worker_name)
     Logger.info("Starting Consumer...")
@@ -65,23 +64,12 @@ defmodule MQ.Consumer do
   @impl true
   def handle_info(:request_channel, %State{worker_name: worker_name} = state) do
     Logger.metadata(worker_name: worker_name)
+    Logger.debug("Requesting a channel for #{worker_name}.")
 
-    case ConnectionManager.request_channel(worker_name) do
-      {:ok, %Channel{} = channel} ->
-        monitor_connection(channel)
-        register_consumer(self(), channel)
-        {:noreply, %{state | channel: channel}}
-
-      error ->
-        Logger.error(
-          "Cannot retrieve channel due to #{inspect(error)}, retyring in #{
-            @retry_request_channel_after_ms
-          }ms."
-        )
-
-        request_channel(@retry_request_channel_after_ms)
-        {:noreply, state}
-    end
+    {:ok, %Channel{} = channel} = ConnectionManager.request_channel(worker_name)
+    monitor_connection(channel)
+    register_consumer(self(), channel)
+    {:noreply, %{state | channel: channel}}
   end
 
   @impl true
@@ -152,21 +140,14 @@ defmodule MQ.Consumer do
   defp commit(_, channel, %{delivery_tag: delivery_tag}),
     do: Basic.reject(channel, delivery_tag, requeue: false)
 
-  # TODO add as required callback through behaviour?
-  defp request_channel(timeout_ms \\ 0) when is_integer(timeout_ms) do
-    Process.send_after(self(), :request_channel, timeout_ms)
-  end
+  defp request_channel, do: Process.send_after(self(), :request_channel, 0)
 
-  # TODO add as required callback through behaviour?
-  defp register_consumer(pid, %Channel{} = channel) when is_pid(pid) do
-    GenServer.cast(pid, {:register_consumer, channel})
-  end
+  defp register_consumer(pid, %Channel{} = channel) when is_pid(pid),
+    do: GenServer.cast(pid, {:register_consumer, channel})
 
   # We will get notified when the connection is down
   # and exit the process cleanly.
   #
   # See how we handle `{:DOWN, _, :process, _pid, reason}`.
-  defp monitor_connection(%Channel{conn: %Connection{pid: pid}}) do
-    Process.monitor(pid)
-  end
+  defp monitor_connection(%Channel{conn: %Connection{pid: pid}}), do: Process.monitor(pid)
 end

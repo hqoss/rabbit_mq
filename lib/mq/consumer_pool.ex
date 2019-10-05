@@ -10,20 +10,20 @@ defmodule MQ.ConsumerPool do
 
   @spec start_link(list()) :: Supervisor.on_start()
   def start_link(opts \\ []) when is_list(opts) do
-    pool_name = opts |> Keyword.fetch!(:module) |> Name.module_to_snake_case()
-    opts = opts |> Keyword.put(:pool_name, pool_name)
+    module = opts |> Keyword.fetch!(:module)
 
-    Logger.metadata(server_name: pool_name)
-    Logger.info("Starting Consumer Pool..")
+    Logger.info("Starting #{module} Consumer Pool..")
 
     # Consumer pools need to be named as there will often be more than one.
-    Supervisor.start_link(@this_module, opts, name: pool_name)
+    Supervisor.start_link(@this_module, opts, name: module)
   end
 
   @spec child_spec(list()) :: Supervisor.child_spec()
   def child_spec(opts \\ []) when is_list(opts) do
+    module = opts |> Keyword.fetch!(:module)
+
     %{
-      id: Name.child_spec_id(),
+      id: module,
       start: {@this_module, :start_link, [opts]},
       type: :supervisor
     }

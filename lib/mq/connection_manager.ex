@@ -1,5 +1,6 @@
 defmodule MQ.ConnectionManager do
   alias AMQP.{Channel, Confirm, Connection}
+  alias Core.ExponentialBackoff
   alias MQ.ChannelRegistry
 
   require Logger
@@ -8,7 +9,6 @@ defmodule MQ.ConnectionManager do
 
   @this_module __MODULE__
   @amqp_url "amqp://guest:guest@localhost:5672"
-  @reconnect_after_ms 5_000
 
   defmodule State do
     defstruct connection: nil
@@ -24,7 +24,9 @@ defmodule MQ.ConnectionManager do
 
   @spec request_channel(atom()) :: {:ok, Channel.t()} | {:error, any()}
   def request_channel(server_name) when is_atom(server_name) do
-    GenServer.call(@this_module, {:request_channel, server_name, :normal})
+    ExponentialBackoff.with_backoff(fn ->
+      GenServer.call(@this_module, {:request_channel, server_name, :normal})
+    end)
   end
 
   @doc """
@@ -32,7 +34,9 @@ defmodule MQ.ConnectionManager do
   """
   @spec request_confirm_channel(atom()) :: {:ok, Channel.t()} | {:error, any()}
   def request_confirm_channel(server_name) when is_atom(server_name) do
-    GenServer.call(@this_module, {:request_channel, server_name, :confirm})
+    ExponentialBackoff.with_backoff(fn ->
+      GenServer.call(@this_module, {:request_channel, server_name, :confirm})
+    end)
   end
 
   @impl true
@@ -69,29 +73,13 @@ defmodule MQ.ConnectionManager do
   end
 
   @impl true
-  def handle_info(:connect, %State{} = state) do
-    # TODO make amqp_url configurable
-    case Connection.open(@amqp_url) do
+  def handle_info({:connect, next_backoff}, %State{} = state) do
+    case open_connection(next_backoff) do
       {:ok, %Connection{pid: pid} = connection} ->
-        Logger.info("Connected to #{@amqp_url}.")
-
-        # We will get notified when the connection is down
-        # and exit the process cleanly.
-        #
-        # See how we handle `{:DOWN, _, :process, _pid, reason}`.
-        Process.monitor(pid)
-
+        monitor_connection(connection)
         {:noreply, %{state | connection: connection}}
 
-      {:error, error} ->
-        Logger.error(
-          "Failed to connect to #{@amqp_url} due to #{inspect(error)}. Reconnecting in #{
-            @reconnect_after_ms
-          }ms."
-        )
-
-        connect(@reconnect_after_ms)
-
+      _ ->
         {:noreply, state}
     end
   end
@@ -104,11 +92,35 @@ defmodule MQ.ConnectionManager do
     {:stop, {:connection_lost, reason}, %State{}}
   end
 
-  defp connect(timeout_ms \\ 0) when is_integer(timeout_ms) do
-    Process.send_after(self(), :connect, timeout_ms)
+  defp connect(prev \\ 0, current \\ 1) when is_integer(prev) and is_integer(current) do
+    {timeout_ms, _current, _next} =
+      next_backoff = ExponentialBackoff.calc_timeout_ms(prev, current)
+
+    Process.send_after(self(), {:connect, next_backoff}, timeout_ms)
   end
 
-  defp open_channel(connection, server_name, :confirm) do
+  defp open_connection({timeout_ms, current, next}) do
+    # TODO make amqp_url configurable
+    case Connection.open(@amqp_url) do
+      {:ok, %Connection{pid: pid} = connection} = reply ->
+        Logger.info("Connected to #{@amqp_url}.")
+        reply
+
+      {:error, error} = reply ->
+        Logger.error(
+          "Failed to connect to #{@amqp_url} due to #{inspect(error)}. Reconnecting in #{
+            timeout_ms
+          }ms."
+        )
+
+        connect(current, next)
+        reply
+    end
+  end
+
+  defp open_channel(%Connection{} = connection, server_name, :confirm) do
+    Logger.debug("Opening a confirm channel for #{server_name}.")
+
     with {:ok, channel} <- Channel.open(connection),
          :ok <- Confirm.select(channel),
          :ok <- ChannelRegistry.insert(server_name, channel) do
@@ -116,10 +128,20 @@ defmodule MQ.ConnectionManager do
     end
   end
 
-  defp open_channel(connection, server_name, :normal) do
+  defp open_channel(%Connection{} = connection, server_name, :normal) do
+    Logger.debug("Opening a channel for #{server_name}.")
+
     with {:ok, channel} <- Channel.open(connection),
          :ok <- ChannelRegistry.insert(server_name, channel) do
       {:ok, channel}
     end
+  end
+
+  # We will get notified when the connection is down
+  # and exit the process cleanly.
+  #
+  # See how we handle `{:DOWN, _, :process, _pid, reason}`.
+  defp monitor_connection(%Connection{pid: pid}) do
+    Process.monitor(pid)
   end
 end

@@ -1,4 +1,4 @@
-defmodule Examples.Processors.ErrorLogProcessor do
+defmodule Examples.Processors.AuditLogProcessor do
   require Logger
 
   def process_message(message, meta) do
