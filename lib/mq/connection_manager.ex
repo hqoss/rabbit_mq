@@ -11,13 +11,15 @@ defmodule MQ.ConnectionManager do
   @amqp_url "amqp://guest:guest@localhost:5672"
 
   defmodule State do
-    defstruct connection: nil
+    @enforce_keys [:amqp_url]
+    defstruct amqp_url: nil, connection: nil
   end
 
   @spec start_link(list()) :: GenServer.on_start()
-  def start_link(_opts) do
+  def start_link(opts) do
     # `name: @this_module` makes it callable via the module name.
-    GenServer.start_link(@this_module, %State{}, name: @this_module)
+    amqp_url = opts |> Keyword.get(:amqp_url, @amqp_url)
+    GenServer.start_link(@this_module, %State{amqp_url: amqp_url}, name: @this_module)
   end
 
   @spec request_channel(atom()) :: {:ok, Channel.t()} | {:error, any()}
@@ -34,9 +36,9 @@ defmodule MQ.ConnectionManager do
   end
 
   @impl true
-  def init(%State{} = initial_state) do
+  def init(%State{amqp_url: amqp_url} = initial_state) do
     :ok = ChannelRegistry.init()
-    {:ok, %Connection{} = connection} = connect()
+    {:ok, %Connection{} = connection} = connect(amqp_url)
     {:ok, %{initial_state | connection: connection}}
   end
 
@@ -66,23 +68,23 @@ defmodule MQ.ConnectionManager do
   end
 
   @impl true
-  def handle_info({:DOWN, _, :process, _pid, reason}, _state) do
-    Logger.error("Connection to #{@amqp_url} lost due to #{inspect(reason)}.")
+  def handle_info({:DOWN, _, :process, _pid, reason}, %State{amqp_url: amqp_url} = state) do
+    Logger.error("Connection to #{amqp_url} lost due to #{inspect(reason)}.")
 
     # Stop GenServer. Will be restarted by Supervisor.
-    {:stop, {:connection_lost, reason}, %State{}}
+    {:stop, {:connection_lost, reason}, %{state | connection: nil}}
   end
 
-  defp connect do
+  defp connect(amqp_url) do
     ExponentialBackoff.with_backoff(fn ->
-      case Connection.open(@amqp_url) do
+      case Connection.open(amqp_url) do
         {:ok, %Connection{} = connection} = reply ->
-          Logger.debug("Connected to #{@amqp_url}.")
+          Logger.debug("Connected to #{amqp_url}.")
           _ = monitor_connection(connection)
           reply
 
         error ->
-          Logger.error("Error connecting to #{@amqp_url}: #{inspect(error)}. Retrying...")
+          Logger.error("Error connecting to #{amqp_url}: #{inspect(error)}. Retrying...")
           error
       end
     end)

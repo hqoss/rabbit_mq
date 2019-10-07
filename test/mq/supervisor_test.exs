@@ -8,7 +8,7 @@ defmodule MQTest.Supervisor do
 
   @this_module __MODULE__
 
-  # doctest MQ
+  # doctest MQ.Supervisor
 
   describe "MQ.Supervisor" do
     test "starts the connection manager by default" do
