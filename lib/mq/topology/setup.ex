@@ -21,6 +21,7 @@ defmodule MQ.Topology.Setup do
     defstruct channel: nil, exchanges: [], errors: []
   end
 
+  @spec run(list()) :: {:ok, any()}
   def run(topology) when is_list(topology) do
     with {:ok, connection} <- Connection.open(@amqp_url),
          {:ok, channel} <- Channel.open(connection),

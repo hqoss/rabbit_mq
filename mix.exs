@@ -8,7 +8,8 @@ defmodule MQ.MixProject do
       elixir: "~> 1.8",
       start_permanent: Mix.env() == :prod,
       aliases: aliases(),
-      deps: deps()
+      deps: deps(),
+      dialyzer: [plt_add_apps: [:mix]]
     ]
   end
 
@@ -27,7 +28,11 @@ defmodule MQ.MixProject do
       {:jason, "~> 1.1"},
       {:poolboy, "~> 1.5.1"},
       # Test deps
-      {:credo, "~> 1.1.0", only: [:dev, :test], runtime: false}
+      {:ex_check, ">= 0.0.0", only: :dev, runtime: false},
+      {:credo, ">= 0.0.0", only: :dev, runtime: false},
+      {:dialyxir, ">= 0.0.0", only: :dev, runtime: false},
+      {:ex_doc, ">= 0.0.0", only: :dev, runtime: false},
+      {:sobelow, ">= 0.0.0", only: :dev, runtime: false}
     ]
   end
 

@@ -1,7 +1,7 @@
 defmodule Examples.Processors.LogProcessor do
   require Logger
 
-  def process_message(message, meta) do
+  def process_message(_message, _meta) do
     Logger.info("Processing...")
     :timer.sleep(7_500)
     Logger.info("Acknowledged.")

@@ -5,7 +5,7 @@ defmodule Core.ExponentialBackoff do
     with_backoff(func, 0, 1, 0)
   end
 
-  defp calc_timeout_ms(previous \\ 0, current \\ 1) do
+  defp calc_timeout_ms(previous, current) do
     next = previous + current
     timeout_ms = next * 100
     {timeout_ms, current, next}
