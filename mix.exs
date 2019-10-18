@@ -9,6 +9,7 @@ defmodule MQ.MixProject do
       start_permanent: Mix.env() == :prod,
       aliases: aliases(),
       deps: deps(),
+      elixirc_paths: elixirc_paths(Mix.env()),
       dialyzer: [plt_add_apps: [:mix]]
     ]
   end
@@ -35,6 +36,10 @@ defmodule MQ.MixProject do
       {:sobelow, ">= 0.0.0", only: :dev, runtime: false}
     ]
   end
+
+  # Specifies which paths to compile per environment.
+  defp elixirc_paths(env) when env in [:test, :ci], do: ["lib", "test/__support"]
+  defp elixirc_paths(_), do: ["lib"]
 
   # Aliases are shortcuts or tasks specific to the current project.
   # For example, to create, migrate and run the seeds file at once:

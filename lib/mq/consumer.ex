@@ -10,7 +10,7 @@ defmodule MQ.Consumer do
   @this_module __MODULE__
 
   defmodule State do
-    @enforce_keys [:worker_name, :module, :prefetch_count, :queue]
+    @enforce_keys [:consumer_tag, :worker_name, :module, :prefetch_count, :queue]
     defstruct channel: nil,
               consumer_tag: nil,
               worker_name: nil,
@@ -21,6 +21,7 @@ defmodule MQ.Consumer do
 
   @spec start_link(list()) :: GenServer.on_start()
   def start_link(opts \\ []) when is_list(opts) do
+    consumer_tag = opts |> Keyword.get(:consumer_tag)
     module = opts |> Keyword.fetch!(:module)
     queue = opts |> Keyword.fetch!(:queue)
     prefetch_count = opts |> Keyword.fetch!(:prefetch_count)
@@ -31,6 +32,7 @@ defmodule MQ.Consumer do
     GenServer.start_link(
       @this_module,
       %State{
+        consumer_tag: consumer_tag,
         worker_name: worker_name,
         module: module,
         prefetch_count: prefetch_count,
@@ -49,13 +51,21 @@ defmodule MQ.Consumer do
   @impl true
   def handle_cast(
         {:register_consumer, channel},
-        %State{prefetch_count: prefetch_count, queue: queue} = state
+        %State{consumer_tag: consumer_tag, prefetch_count: prefetch_count, queue: queue} = state
       ) do
     # If anything goes wrong here, the process will die and the supervisor
     # will attempt to restart it, which is the desired behaviour.
     :ok = Basic.qos(channel, prefetch_count: prefetch_count)
-    {:ok, consumer_tag} = Basic.consume(channel, queue)
-    {:noreply, %{state | consumer_tag: consumer_tag}}
+
+    case consumer_tag do
+      nil ->
+        {:ok, consumer_tag} = Basic.consume(channel, queue)
+        {:noreply, %{state | consumer_tag: consumer_tag}}
+
+      consumer_tag ->
+        {:ok, _consumer_tag} = Basic.consume(channel, queue, nil, consumer_tag: consumer_tag)
+        {:noreply, %{state | consumer_tag: consumer_tag}}
+    end
   end
 
   @impl true

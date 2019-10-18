@@ -16,7 +16,8 @@ defmodule Examples.Config.Exchanges do
          {"*.error",
           queue: "log_queue/*.error/example", durable: true, dlq: "log_dead_letter_queue"},
          {"#", durable: false, exclusive: true, dlq: "log_dead_letter_queue"}
-       ]}
+       ]},
+      {"test", type: :topic, durable: true, routing_keys: []}
     ]
   end
 end
