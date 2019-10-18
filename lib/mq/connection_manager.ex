@@ -1,14 +1,13 @@
 defmodule MQ.ConnectionManager do
   alias AMQP.{Channel, Confirm, Connection}
   alias Core.ExponentialBackoff
-  alias MQ.ChannelRegistry
+  alias MQ.{AMQPConfig, ChannelRegistry}
 
   require Logger
 
   use GenServer
 
   @this_module __MODULE__
-  @amqp_url "amqp://guest:guest@localhost:5672"
 
   defmodule State do
     @enforce_keys [:amqp_url]
@@ -17,8 +16,8 @@ defmodule MQ.ConnectionManager do
 
   @spec start_link(list()) :: GenServer.on_start()
   def start_link(opts) do
+    amqp_url = opts |> Keyword.get(:amqp_url, AMQPConfig.url())
     # `name: @this_module` makes it callable via the module name.
-    amqp_url = opts |> Keyword.get(:amqp_url, @amqp_url)
     GenServer.start_link(@this_module, %State{amqp_url: amqp_url}, name: @this_module)
   end
 

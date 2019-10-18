@@ -1,4 +1,6 @@
 defmodule MQ.Topology.Config do
+  alias MQ.AMQPConfig
+
   defmodule DeadLetterQueueConfig do
     @enforce_keys [:name]
     defstruct name: nil, durable: true, exclusive: false
@@ -14,8 +16,10 @@ defmodule MQ.Topology.Config do
     defstruct name: nil, durable: nil, type: :topic, queues: nil
   end
 
-  def gen(exchanges) when is_list(exchanges) do
-    exchanges |> Enum.map(&exchange_config/1)
+  def gen do
+    AMQPConfig.exchanges()
+    |> apply(:gen, [])
+    |> Enum.map(&exchange_config/1)
   end
 
   defp exchange_config({exchange, opts}) do

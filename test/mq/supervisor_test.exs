@@ -2,7 +2,7 @@ defmodule MQTest.Supervisor do
   alias Examples.Processors.{AuditLogProcessor, LogProcessor}
   alias Examples.Producers.{AuditLogProducer, LogProducer}
   alias MQ.ConnectionManager
-  alias MQ.Supervisor, as: RabbitMq
+  alias MQ.Supervisor, as: RabbitMqSupervisor
 
   use ExUnit.Case
 
@@ -12,7 +12,7 @@ defmodule MQTest.Supervisor do
 
   describe "MQ.Supervisor" do
     test "starts the connection manager by default" do
-      {:ok, _pid} = start_supervised(RabbitMq)
+      {:ok, _pid} = start_supervised(RabbitMqSupervisor)
       assert {:ok, _channel} = ConnectionManager.request_channel(@this_module)
     end
 
@@ -24,7 +24,7 @@ defmodule MQTest.Supervisor do
         ]
       ]
 
-      {:ok, _pid} = start_supervised({RabbitMq, opts})
+      {:ok, _pid} = start_supervised({RabbitMqSupervisor, opts})
 
       assert Process.whereis(AuditLogProducer) |> Process.alive?() == true
       assert Process.whereis(LogProducer) |> Process.alive?() == true
@@ -38,7 +38,7 @@ defmodule MQTest.Supervisor do
         ]
       ]
 
-      {:ok, _pid} = start_supervised({RabbitMq, opts})
+      {:ok, _pid} = start_supervised({RabbitMqSupervisor, opts})
 
       assert Process.whereis(AuditLogProcessor) |> Process.alive?() == true
       assert Process.whereis(LogProcessor) |> Process.alive?() == true

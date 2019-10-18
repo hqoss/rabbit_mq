@@ -9,6 +9,10 @@ config :logger, :console,
 
 config :logger, handle_otp_reports: false
 
+config :rabbitex, :config,
+  amqp_url: "amqp://guest:guest@localhost:5672",
+  exchanges: Examples.Exchanges
+
 # It is also possible to import configuration files, relative to this
 # directory. For example, you can emulate configuration per environment
 # by uncommenting the line below and defining dev.exs, test.exs and such.

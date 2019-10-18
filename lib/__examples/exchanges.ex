@@ -1,4 +1,4 @@
-defmodule Examples.Config.Exchanges do
+defmodule Examples.Exchanges do
   def gen do
     [
       {"audit_log",

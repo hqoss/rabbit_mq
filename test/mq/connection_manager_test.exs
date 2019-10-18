@@ -1,5 +1,6 @@
 defmodule MQTest.ConnectionManager do
   alias AMQP.{Channel, Connection}
+  alias Core.Name
   alias MQ.ChannelRegistry
   alias MQ.ConnectionManager
 
@@ -7,11 +8,11 @@ defmodule MQTest.ConnectionManager do
 
   # doctest MQ.ConnectionManager
 
-  describe "MQ.ConnectionManager" do
-    defp unique_module_name do
-      :crypto.strong_rand_bytes(8) |> Base.encode64() |> String.to_atom()
-    end
+  defp unique_module_name do
+    Name.random_id() |> String.to_atom()
+  end
 
+  describe "MQ.ConnectionManager" do
     test "connects to AMQP and has the ability to retrieve normal and confirm channels on the same connection" do
       assert {:ok, _pid} = start_supervised(ConnectionManager)
 

@@ -11,19 +11,22 @@ defmodule MQ.Topology.Setup do
     Queue
   }
 
+  alias MQ.AMQPConfig
+  alias MQ.Topology.Config
   alias MQ.Topology.Config.{DeadLetterQueueConfig, QueueConfig, TopicExchangeConfig}
 
   require Logger
-
-  @amqp_url "amqp://guest:guest@localhost:5672"
 
   defmodule Result do
     defstruct channel: nil, exchanges: [], errors: []
   end
 
-  @spec run(list()) :: {:ok, any()}
-  def run(topology) when is_list(topology) do
-    with {:ok, connection} <- Connection.open(@amqp_url),
+  @spec run() :: {:ok, any()}
+  def run do
+    topology = Config.gen()
+    amqp_url = AMQPConfig.url()
+
+    with {:ok, connection} <- Connection.open(amqp_url),
          {:ok, channel} <- Channel.open(connection),
          results <- channel |> setup(topology),
          :ok <- channel |> Channel.close() do

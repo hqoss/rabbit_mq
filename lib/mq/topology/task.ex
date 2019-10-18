@@ -1,6 +1,5 @@
 defmodule Mix.Tasks.Rabbit.Init do
-  alias Examples.Config.Exchanges
-  alias MQ.Topology.{Config, Setup}
+  alias MQ.Topology.Setup
 
   use Mix.Task
 
@@ -9,8 +8,6 @@ defmodule Mix.Tasks.Rabbit.Init do
   def run(_) do
     # Mix.Task.run("app.start")
 
-    Exchanges.gen()
-    |> Config.gen()
-    |> Setup.run()
+    Setup.run()
   end
 end

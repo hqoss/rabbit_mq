@@ -1,23 +1,15 @@
 defmodule MQTest.Consumer do
-  alias Examples.Config.Exchanges
-  alias MQ.Topology.{Config, Queue}
   alias MQ.ConnectionManager
-  alias MQ.Support.{ExclusiveQueue, TestConsumer}
+  alias MQ.Support.{RabbitCase, ExclusiveQueue, TestConsumer}
   alias MQTest.Support.TestProducer
 
-  use ExUnit.Case
+  use RabbitCase
 
   # @this_module __MODULE__
 
   # doctest MQ.Consumer
 
   setup_all do
-    exchanges = Exchanges.gen()
-    topology = Config.gen(exchanges)
-    Queue.purge_all(topology)
-
-    assert {:ok, _pid} = start_supervised(ConnectionManager)
-
     assert {:ok, _pid} =
              start_supervised(
                TestProducer.child_spec(module: TestProducer, workers: 1, worker_overflow: 0)
