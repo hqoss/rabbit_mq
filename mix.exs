@@ -9,6 +9,8 @@ defmodule MQ.MixProject do
       start_permanent: Mix.env() == :prod,
       aliases: aliases(),
       deps: deps(),
+      description: description(),
+      package: package(),
       elixirc_paths: elixirc_paths(Mix.env()),
       dialyzer: [plt_add_apps: [:mix]]
     ]
@@ -20,6 +22,20 @@ defmodule MQ.MixProject do
       extra_applications: [:logger]
       # mod: {Examples.Application, []}
     ]
+  end
+
+  defp package() do
+    [
+      # These are the default files included in the package
+      files: ~w(lib .formatter.exs mix.exs README*),
+      licenses: ["Apache 2.0"],
+      maintainers: ["Slavo Vojacek"],
+      links: %{"GitHub" => "https://github.com/qworks-io/rabbitex.git"}
+    ]
+  end
+
+  defp description do
+    "rabbitex contains a set of tools that make working with RabbitMQ consume/produce pipelines easier"
   end
 
   # Run "mix help deps" to learn about dependencies.
