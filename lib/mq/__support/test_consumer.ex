@@ -3,33 +3,35 @@ defmodule MQ.Support.TestConsumer do
   alias MQ.Consumer
   alias MQ.Support.TestConsumerRegistry
 
+  require Logger
+
   @this_module __MODULE__
 
   def child_spec(opts) do
-    :ok = TestConsumerRegistry.init()
-
-    consumer_tag = Name.random_id()
-    pid = opts |> Keyword.fetch!(:pid)
-
-    :ok = TestConsumerRegistry.register_pid(consumer_tag, pid)
+    queue = opts |> Keyword.fetch!(:queue)
 
     opts =
       opts
       |> Keyword.take([:queue])
       |> Keyword.merge(
-        consumer_tag: consumer_tag,
         module: @this_module,
         prefetch_count: 1
       )
 
     %{
-      id: consumer_tag,
+      id: queue,
       start: {Consumer, :start_link, [opts]}
     }
   end
 
-  def process_message(payload, %{consumer_tag: consumer_tag} = meta) do
-    {:ok, pid} = TestConsumerRegistry.lookup_pid(consumer_tag)
+  def register_reply_to(consumer_pid) when is_pid(consumer_pid) do
+    reply_to = Name.random_id()
+    :ok = TestConsumerRegistry.register_pid(reply_to, consumer_pid)
+    {:ok, reply_to}
+  end
+
+  def process_message(payload, %{reply_to: reply_to} = meta) do
+    {:ok, pid} = TestConsumerRegistry.lookup_pid(reply_to)
 
     message =
       case Jason.decode(payload) do

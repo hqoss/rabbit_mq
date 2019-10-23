@@ -15,21 +15,22 @@ defmodule MQTest.Consumer do
                TestProducer.child_spec(module: TestProducer, workers: 1, worker_overflow: 0)
              )
 
-    assert {:ok, queue} =
-             ExclusiveQueue.declare(exchange: "test", routing_key: "test.routing_key")
+    assert {:ok, queue} = ExclusiveQueue.declare(exchange: "test", routing_key: "test.consumer")
 
-    [queue: queue]
-  end
+    assert {:ok, _pid} = start_supervised(TestConsumer.child_spec(queue: queue))
 
-  setup %{queue: queue} do
-    assert {:ok, _pid} = start_supervised(TestConsumer.child_spec(queue: queue, pid: self()))
     :ok
   end
 
+  setup do
+    assert {:ok, reply_to} = TestConsumer.register_reply_to(self())
+    publish_opts = [routing_key: "test.consumer", reply_to: reply_to]
+    [publish_opts: publish_opts]
+  end
+
   describe "MQ.Consumer" do
-    test "consumes messages" do
-      headers = [{"authorization", "Bearer abc.123"}]
-      opts = [headers: headers, routing_key: "test.routing_key"]
+    test "consumes messages", %{publish_opts: opts} do
+      opts = opts |> Keyword.merge(headers: [{"authorization", "Bearer abc.123"}])
 
       TestProducer.publish_event("yo", opts)
 

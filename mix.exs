@@ -44,6 +44,7 @@ defmodule MQ.MixProject do
       {:amqp, "~> 1.3"},
       {:jason, "~> 1.1"},
       {:poolboy, "~> 1.5.1"},
+      {:uuid, "~> 1.1"},
       # Test deps
       {:ex_check, ">= 0.0.0", only: :dev, runtime: false},
       {:credo, ">= 0.0.0", only: :dev, runtime: false},

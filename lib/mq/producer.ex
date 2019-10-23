@@ -1,5 +1,8 @@
 defmodule MQ.Producer do
   @doc false
+
+  alias Core.DateTime
+
   defmacro __using__(opts) do
     quote do
       @doc false
@@ -78,7 +81,8 @@ defmodule MQ.Producer do
             _from,
             %State{channel: %Channel{} = channel} = state
           ) do
-        # TODO Update opts to clean headers?
+        opts = opts |> Producer.add_default_metadata()
+
         with {:ok, routing_key} <- Producer.get_routing_key_from_opts(opts),
              :ok <- Basic.publish(channel, @exchange, routing_key, payload, opts),
              true <- Confirm.wait_for_confirms_or_die(channel) do
@@ -132,5 +136,12 @@ defmodule MQ.Producer do
       {:ok, routing_key} when is_binary(routing_key) -> {:ok, routing_key}
       _ -> {:error, :missing_or_invalid_routing_key}
     end
+  end
+
+  @spec add_default_metadata(list()) :: list()
+  def add_default_metadata(opts) do
+    opts
+    |> Keyword.put_new(:correlation_id, UUID.uuid4())
+    |> Keyword.put_new(:timestamp, DateTime.now_unix())
   end
 end

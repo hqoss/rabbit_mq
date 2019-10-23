@@ -34,7 +34,7 @@ defmodule MQ.ChannelRegistry do
   end
 
   @spec delete(atom()) :: :ok
-  defp delete(server_name) do
+  def delete(server_name) do
     _ = :ets.delete(@registry, server_name)
     :ok
   end

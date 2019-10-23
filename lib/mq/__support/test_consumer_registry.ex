@@ -5,7 +5,7 @@ defmodule MQ.Support.TestConsumerRegistry do
 
   @spec init() :: :ok
   def init do
-    _ = :ets.new(@registry, [:set, :protected, :named_table, read_concurrency: true])
+    _ = :ets.new(@registry, [:set, :public, :named_table, read_concurrency: true])
     :ok
   end
 

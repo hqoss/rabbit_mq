@@ -91,6 +91,14 @@ defmodule MQ.Consumer do
     {:noreply, state}
   end
 
+  # @impl GenServer
+  # def handle_info({:basic_cancel, %{consumer_tag: consumer_tag}}, %State{worker_name: worker_name} = state) do
+  #   Logger.metadata(worker_name: worker_name)
+  #   Logger.warn("Broker cancelled consumer #{consumer_tag} unexpectedly.")
+
+  #   {:stop, :normal, state}
+  # end
+
   @impl true
   def handle_info({:basic_deliver, payload, meta}, state) do
     spawn(fn -> consume(payload, meta, state) end)

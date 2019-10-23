@@ -3,7 +3,7 @@
 use Mix.Config
 
 config :logger, :console,
-  level: :debug,
+  level: :info,
   format: {Core.LogFormatter, :format},
   metadata: :all
 

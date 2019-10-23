@@ -34,6 +34,11 @@ defmodule MQ.ConnectionManager do
     GenServer.call(@this_module, {:request_channel, server_name, :confirm})
   end
 
+  @spec close_channel(atom()) :: :ok | {:error, any()}
+  def close_channel(server_name) when is_atom(server_name) do
+    GenServer.call(@this_module, {:close_channel, server_name})
+  end
+
   @impl true
   def init(%State{amqp_url: amqp_url} = initial_state) do
     :ok = ChannelRegistry.init()
@@ -63,6 +68,19 @@ defmodule MQ.ConnectionManager do
 
       {:error, :channel_not_found} ->
         {:reply, open_channel(connection, server_name, channel_type), state}
+    end
+  end
+
+  @impl true
+  def handle_call({:close_channel, server_name}, _from, %State{} = state) do
+    server_name
+    |> ChannelRegistry.lookup()
+    |> case do
+      {:ok, %Channel{} = channel} ->
+        {:reply, close_and_remove_channel(channel, server_name), state}
+
+      error ->
+        {:reply, error, state}
     end
   end
 
@@ -105,6 +123,15 @@ defmodule MQ.ConnectionManager do
     with {:ok, channel} <- Channel.open(connection),
          :ok <- ChannelRegistry.insert(server_name, channel) do
       {:ok, channel}
+    end
+  end
+
+  defp close_and_remove_channel(%Channel{} = channel, server_name) do
+    channel
+    |> Channel.close()
+    |> case do
+      :ok -> server_name |> ChannelRegistry.delete()
+      error -> error
     end
   end
 
