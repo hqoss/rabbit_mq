@@ -1,4 +1,9 @@
 defmodule Core.LogFormatter do
+  @moduledoc """
+  Useful log formatter, outputs JSON in `prod`.
+  """
+
+  @doc false
   def format(level, message, {date, {hh, mm, ss, _ms}} = timestamp, metadata) do
     iso_timestamp =
       {date, {hh, mm, ss}}

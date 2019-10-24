@@ -1,7 +1,7 @@
-defmodule MQ.Support.TestConsumer do
+defmodule MQTest.Support.TestConsumer do
   alias Core.Name
   alias MQ.Consumer
-  alias MQ.Support.TestConsumerRegistry
+  alias MQTest.Support.TestConsumerRegistry
 
   require Logger
 

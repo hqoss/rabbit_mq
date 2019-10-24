@@ -1,7 +1,7 @@
 defmodule MQTest.Consumer do
   alias MQ.ConnectionManager
-  alias MQ.Support.{RabbitCase, ExclusiveQueue, TestConsumer}
-  alias MQTest.Support.TestProducer
+  alias MQTest.Support.{RabbitCase, ExclusiveQueue, TestConsumer, Producers}
+  alias Producers.AuditLogProducer
 
   use RabbitCase
 
@@ -10,12 +10,10 @@ defmodule MQTest.Consumer do
   # doctest MQ.Consumer
 
   setup_all do
-    assert {:ok, _pid} =
-             start_supervised(
-               TestProducer.child_spec(module: TestProducer, workers: 1, worker_overflow: 0)
-             )
+    assert {:ok, _pid} = start_supervised(AuditLogProducer.child_spec())
 
-    assert {:ok, queue} = ExclusiveQueue.declare(exchange: "test", routing_key: "test.consumer")
+    assert {:ok, queue} =
+             ExclusiveQueue.declare(exchange: "audit_log", routing_key: "user_action.*")
 
     assert {:ok, _pid} = start_supervised(TestConsumer.child_spec(queue: queue))
 
@@ -24,18 +22,21 @@ defmodule MQTest.Consumer do
 
   setup do
     assert {:ok, reply_to} = TestConsumer.register_reply_to(self())
-    publish_opts = [routing_key: "test.consumer", reply_to: reply_to]
+    publish_opts = [reply_to: reply_to]
     [publish_opts: publish_opts]
   end
 
   describe "MQ.Consumer" do
-    test "consumes messages", %{publish_opts: opts} do
-      opts = opts |> Keyword.merge(headers: [{"authorization", "Bearer abc.123"}])
+    test "consumes messages", %{publish_opts: publish_opts} do
+      user_id = UUID.uuid4()
 
-      TestProducer.publish_event("yo", opts)
+      AuditLogProducer.publish_event(user_id, :login, publish_opts)
 
-      assert_receive({:binary, "yo", %{headers: headers}}, 250)
-      assert headers == [{"authorization", :longstr, "Bearer abc.123"}]
+      assert_receive({:json, %{"user_id" => ^user_id}, meta}, 250)
+
+      assert meta.routing_key == "user_action.login"
+
+      refute_receive 100
     end
   end
 end

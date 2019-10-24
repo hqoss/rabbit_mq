@@ -22,7 +22,6 @@ defmodule MQ.Producer do
       @this_module __MODULE__
       @exchange unquote(opts |> Keyword.fetch!(:exchange))
       @send_timeout 5_000
-      @retry_request_channel_after_ms 2_750
 
       @spec start_link(list()) :: GenServer.on_start()
       def start_link(_opts) do
@@ -32,11 +31,9 @@ defmodule MQ.Producer do
         GenServer.start_link(@this_module, %State{worker_name: worker_name}, name: worker_name)
       end
 
-      # TODO typespec
+      @spec child_spec(keyword()) :: GenServer.child_spec()
       def child_spec(opts \\ []) when is_list(opts) do
-        module = opts |> Keyword.fetch!(:module)
-        workers = opts |> Keyword.fetch!(:workers)
-        overflow = opts |> Keyword.fetch!(:worker_overflow)
+        workers = opts |> Keyword.get(:workers, 3)
 
         %{
           id: @this_module,
@@ -44,12 +41,14 @@ defmodule MQ.Producer do
             {:poolboy, :start_link,
              [
                [
-                 name: {:local, module},
+                 name: {:local, @this_module},
                  # `worker_module: @this_module` makes the entire pool callable
                  # through the module name that `use`s `MQ.Producer`.
                  worker_module: @this_module,
                  size: workers,
-                 max_overflow: overflow
+                 # Might consider making this an option but in the vast majority
+                 # of cases (if not all) you will want this to be `0`.
+                 max_overflow: 0
                ],
                opts
              ]}

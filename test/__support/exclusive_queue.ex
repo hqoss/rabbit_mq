@@ -1,4 +1,4 @@
-defmodule MQ.Support.ExclusiveQueue do
+defmodule MQTest.Support.ExclusiveQueue do
   @moduledoc """
   Use to create exclusive queues in tests.
   """

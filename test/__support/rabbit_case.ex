@@ -1,4 +1,4 @@
-defmodule MQ.Support.RabbitCase do
+defmodule MQTest.Support.RabbitCase do
   @moduledoc """
   Used to setup tests using RabbitMQ and ensure exclusivity.
   """

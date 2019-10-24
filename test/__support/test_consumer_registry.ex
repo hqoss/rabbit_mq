@@ -1,4 +1,4 @@
-defmodule MQ.Support.TestConsumerRegistry do
+defmodule MQTest.Support.TestConsumerRegistry do
   require Logger
 
   @registry :mq_support_test_consumer_registry
@@ -19,13 +19,13 @@ defmodule MQ.Support.TestConsumerRegistry do
   end
 
   @spec register_pid(String.t(), pid()) :: :ok
-  def register_pid(consumer_tag, pid) when is_binary(consumer_tag) and is_pid(pid) do
-    case :ets.insert_new(@registry, {consumer_tag, pid}) do
+  def register_pid(reply_to, pid) when is_binary(reply_to) and is_pid(pid) do
+    case :ets.insert_new(@registry, {reply_to, pid}) do
       true ->
         :ok
 
       _ ->
-        Logger.warn("Entry for #{consumer_tag} already exists, skipping insert.")
+        Logger.warn("Entry for #{reply_to} already exists, skipping insert.")
         :ok
     end
   end

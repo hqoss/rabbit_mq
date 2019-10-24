@@ -27,7 +27,7 @@ defmodule MQ.MixProject do
   defp package() do
     [
       # These are the default files included in the package
-      files: ~w(lib .formatter.exs mix.exs README*),
+      files: ~w(lib test/__support .formatter.exs mix.exs README*),
       licenses: ["Apache 2.0"],
       maintainers: ["Slavo Vojacek"],
       links: %{"GitHub" => "https://github.com/qworks-io/rabbitex.git"}

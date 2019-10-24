@@ -1,8 +1,8 @@
 defmodule MQTest.Supervisor do
-  alias Examples.Processors.{AuditLogProcessor, LogProcessor}
-  alias Examples.Producers.{AuditLogProducer, LogProducer}
   alias MQ.ConnectionManager
   alias MQ.Supervisor, as: RabbitMqSupervisor
+  alias MQTest.Support.Consumers.AuditLogMessageProcessor
+  alias MQTest.Support.Producers.{AuditLogProducer, ServiceRequestProducer}
 
   use ExUnit.Case
 
@@ -19,29 +19,28 @@ defmodule MQTest.Supervisor do
     test "starts corresponding producer pools when producers are provided in opts" do
       opts = [
         producers: [
-          {AuditLogProducer, workers: 1},
-          {LogProducer, workers: 1}
+          {AuditLogProducer, workers: 2},
+          ServiceRequestProducer
         ]
       ]
 
       {:ok, _pid} = start_supervised({RabbitMqSupervisor, opts})
 
       assert Process.whereis(AuditLogProducer) |> Process.alive?() == true
-      assert Process.whereis(LogProducer) |> Process.alive?() == true
+      assert Process.whereis(ServiceRequestProducer) |> Process.alive?() == true
     end
 
     test "starts corresponding consumer pools when consumers are provided in opts" do
       opts = [
         consumers: [
-          {AuditLogProcessor, workers: 1, queue: "audit_log_queue/#/example"},
-          {LogProcessor, workers: 1, queue: "log_queue/#/example"}
+          # Defaults `workers` to `3`.
+          {AuditLogMessageProcessor, queue: "audit_log_queue/user_action.*/rabbit_mq_ex"}
         ]
       ]
 
       {:ok, _pid} = start_supervised({RabbitMqSupervisor, opts})
 
-      assert Process.whereis(AuditLogProcessor) |> Process.alive?() == true
-      assert Process.whereis(LogProcessor) |> Process.alive?() == true
+      assert Process.whereis(AuditLogMessageProcessor) |> Process.alive?() == true
     end
   end
 end
