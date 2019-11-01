@@ -31,7 +31,7 @@ defmodule MQ.Producer do
         GenServer.start_link(@this_module, %State{worker_name: worker_name}, name: worker_name)
       end
 
-      @spec child_spec(keyword()) :: GenServer.child_spec()
+      @spec child_spec(keyword()) :: Supervisor.child_spec()
       def child_spec(opts \\ []) when is_list(opts) do
         workers = opts |> Keyword.get(:workers, 3)
 

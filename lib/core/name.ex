@@ -1,6 +1,6 @@
 defmodule Core.Name do
   @spec random_id() :: String.t()
-  def random_id, do: :crypto.strong_rand_bytes(8) |> Base.encode64()
+  def random_id, do: Nanoid.generate_non_secure()
   def child_spec_id, do: random_id() |> String.to_atom()
 
   @spec unique_worker_name(atom()) :: atom()

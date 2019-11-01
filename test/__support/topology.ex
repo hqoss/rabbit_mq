@@ -1,9 +1,9 @@
-defmodule MQTest.Support.Exchanges do
-  alias MQ.Topology.Exchanges
+defmodule MQTest.Support.Topology do
+  alias MQ.Topology
 
   @exchanges ~w(audit_log service_request)
 
-  @behaviour Exchanges
+  @behaviour Topology
 
   def gen do
     @exchanges |> Enum.map(&exchange/1)

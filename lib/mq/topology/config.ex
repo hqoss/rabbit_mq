@@ -17,7 +17,7 @@ defmodule MQ.Topology.Config do
   end
 
   def gen do
-    AMQPConfig.exchanges()
+    AMQPConfig.topology()
     |> apply(:gen, [])
     |> Enum.map(&exchange_config/1)
   end

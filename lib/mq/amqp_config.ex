@@ -4,11 +4,7 @@ defmodule MQ.AMQPConfig do
     |> Application.get_env(:config, [])
   end
 
-  def url do
-    config() |> Keyword.fetch!(:amqp_url)
-  end
+  def url, do: config() |> Keyword.fetch!(:amqp_url)
 
-  def exchanges do
-    config() |> Keyword.fetch!(:exchanges)
-  end
+  def topology, do: config() |> Keyword.fetch!(:topology)
 end

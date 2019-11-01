@@ -152,8 +152,10 @@ defmodule MQ.Consumer do
        }),
        do: Basic.reject(channel, delivery_tag, requeue: not redelivered)
 
-  defp commit(_, channel, %{delivery_tag: delivery_tag}),
-    do: Basic.reject(channel, delivery_tag, requeue: false)
+  defp commit(unmatched, channel, %{delivery_tag: delivery_tag}) do
+    Logger.warn("Rejecting message, could not match #{inspect(unmatched)}.")
+    Basic.reject(channel, delivery_tag, requeue: false)
+  end
 
   defp request_channel, do: Process.send_after(self(), :request_channel, 0)
 

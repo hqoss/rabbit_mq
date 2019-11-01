@@ -1,6 +1,6 @@
-defmodule MQ.Topology.Exchanges do
+defmodule MQ.Topology do
   @moduledoc """
-  Defines the behaviour that the exchange config needs to implement.
+  Defines the behaviour that the topology config needs to implement.
   """
 
   @type exchange() :: {String.t(), keyword()}

@@ -20,7 +20,7 @@ defmodule MQ.MixProject do
   def application do
     [
       extra_applications: [:logger]
-      # mod: {Examples.Application, []}
+      # mod: {Bookings.Application, []}
     ]
   end
 
@@ -43,7 +43,9 @@ defmodule MQ.MixProject do
     [
       {:amqp, "~> 1.3"},
       {:jason, "~> 1.1"},
+      {:nanoid, "~> 2.0.2"},
       {:poolboy, "~> 1.5.1"},
+      {:timex, "~> 3.5"},
       {:uuid, "~> 1.1"},
       # Test deps
       {:ex_check, ">= 0.0.0", only: :dev, runtime: false},
