@@ -5,7 +5,7 @@ defmodule Bookings.Producers.AirlineRequestProducer do
 
   @valid_airline_codes ~w(ba qr)a
 
-  def place_booking(airline_code, %{date_time: _, flight_number: _} = params, opts)
+  def place_booking(airline_code, %{date_time: _, flight_number: _} = params, opts \\ [])
       when airline_code in @valid_airline_codes and is_list(opts) do
     airline = airline(airline_code)
     payload = payload(params)
@@ -14,7 +14,7 @@ defmodule Bookings.Producers.AirlineRequestProducer do
     publish(payload, opts)
   end
 
-  def cancel_booking(airline_code, %{booking_id: _} = params, opts)
+  def cancel_booking(airline_code, %{booking_id: _} = params, opts \\ [])
       when airline_code in @valid_airline_codes and is_list(opts) do
     airline = airline(airline_code)
     payload = payload(params)
