@@ -9,11 +9,11 @@ defmodule BookingsTest.Producers.AirlineRequestProducer do
     assert {:ok, _pid} = start_supervised(AirlineRequestProducer.child_spec())
 
     # Make sure our tests receive all messages published to the `airline_request`
-    #  exchange, regardless of routing key (hence `#`).
+    # exchange, regardless of the `routing_key` configured (hence `#`).
     assert {:ok, airline_request_queue} =
              ExclusiveQueue.declare(exchange: "airline_request", routing_key: "#")
 
-    # Start the TestConsumer module, which consumes messages from given queue
+    # Start the `TestConsumer` module, which consumes messages from a given queue
     # and sends them to a process associated with a test that's being executed.
     #
     # See `TestConsumer.register_reply_to(self())` in the `setup` section below.
@@ -71,7 +71,8 @@ defmodule BookingsTest.Producers.AirlineRequestProducer do
       refute_receive 100
     end
 
-    test "place_booking/3 produces a message with custom metadata, but does not override `routing_key`", %{publish_opts: publish_opts} do
+    test "place_booking/3 produces a message with custom metadata, but does not override `routing_key`",
+         %{publish_opts: publish_opts} do
       date_time = DateTime.utc_now() |> DateTime.to_iso8601()
       flight_number = "QR007"
       payload = %{date_time: date_time, flight_number: flight_number}
@@ -136,7 +137,8 @@ defmodule BookingsTest.Producers.AirlineRequestProducer do
       refute_receive 100
     end
 
-    test "cancel_booking/3 produces a message with custom metadata, but does not override `routing_key`", %{publish_opts: publish_opts} do
+    test "cancel_booking/3 produces a message with custom metadata, but does not override `routing_key`",
+         %{publish_opts: publish_opts} do
       booking_id = UUID.uuid4()
       payload = %{booking_id: booking_id}
 

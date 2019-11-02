@@ -294,11 +294,11 @@ defmodule BookingsTest.Producers.AirlineRequestProducer do
     assert {:ok, _pid} = start_supervised(AirlineRequestProducer.child_spec())
 
     # Make sure our tests receive all messages published to the `airline_request`
-    #  exchange, regardless of routing key (hence `#`).
+    # exchange, regardless of the `routing_key` configured (hence `#`).
     assert {:ok, airline_request_queue} =
              ExclusiveQueue.declare(exchange: "airline_request", routing_key: "#")
 
-    # Start the TestConsumer module, which consumes messages from given queue
+    # Start the `TestConsumer` module, which consumes messages from a given queue
     # and sends them to a process associated with a test that's being executed.
     #
     # See `TestConsumer.register_reply_to(self())` in the `setup` section below.
