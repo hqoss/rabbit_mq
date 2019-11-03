@@ -29,8 +29,8 @@ defmodule MQ.MixProject do
       # These are the default files included in the package
       files: ~w(lib test/__support .formatter.exs mix.exs README*),
       licenses: ["Apache 2.0"],
-      maintainers: ["Slavo Vojacek"],
-      links: %{"GitHub" => "https://github.com/qworks-io/rabbit_mq_ex.git"}
+      links: %{"GitHub" => "https://github.com/qworks-io/rabbit_mq_ex.git"},
+      maintainers: ["Slavo Vojacek"]
     ]
   end
 
