@@ -5,12 +5,12 @@ A better RabbitMQ client.
 ## Installation
 
 If [available in Hex](https://hex.pm/docs/publish), the package can be installed
-by adding `rabbitex` to your list of dependencies in `mix.exs`:
+by adding `rabbit_mq_ex` to your list of dependencies in `mix.exs`:
 
 ```elixir
 def deps do
   [
-    {:rabbitex, "~> 0.1.0"}
+    {:rabbit_mq_ex, "~> 0.1.0"}
   ]
 end
 ```
@@ -110,12 +110,12 @@ Please note that the strategy for naming queues is largely dependent on your use
 
 ### Application configuration
 
-Now that we have our topology defined, let's configure the `:rabbitex` application environment to make use of it.
+Now that we have our topology defined, let's configure the `:rabbit_mq_ex` application environment to make use of it.
 
 ```elixir
 use Mix.Config
 
-config :rabbitex, :config,
+config :rabbit_mq_ex, :config,
   amqp_url: "amqp://guest:guest@localhost:5672",
   topology: Bookings.Topology
 
@@ -259,7 +259,7 @@ In `config/test.exs`:
 ```elixir
 use Mix.Config
 
-config :rabbitex, :config,
+config :rabbit_mq_ex, :config,
   amqp_url: "amqp://guest:guest@localhost:5672",
   topology: Bookings.Topology
 
@@ -398,4 +398,4 @@ end
 
 Documentation can be generated with [ExDoc](https://github.com/elixir-lang/ex_doc)
 and published on [HexDocs](https://hexdocs.pm). Once published, the docs can
-be found at [https://hexdocs.pm/rabbitex](https://hexdocs.pm/rabbitex).
+be found at [https://hexdocs.pm/rabbit_mq_ex](https://hexdocs.pm/rabbit_mq_ex).

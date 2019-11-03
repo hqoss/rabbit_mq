@@ -3,7 +3,7 @@ defmodule MQ.MixProject do
 
   def project do
     [
-      app: :rabbitex,
+      app: :rabbit_mq_ex,
       version: "0.1.1",
       elixir: "~> 1.8",
       start_permanent: Mix.env() == :prod,
@@ -30,12 +30,12 @@ defmodule MQ.MixProject do
       files: ~w(lib test/__support .formatter.exs mix.exs README*),
       licenses: ["Apache 2.0"],
       maintainers: ["Slavo Vojacek"],
-      links: %{"GitHub" => "https://github.com/qworks-io/rabbitex.git"}
+      links: %{"GitHub" => "https://github.com/qworks-io/rabbit_mq_ex.git"}
     ]
   end
 
   defp description do
-    "rabbitex contains a set of tools that make working with RabbitMQ consume/produce pipelines easier"
+    "rabbit_mq_ex contains a set of tools that make working with RabbitMQ consume/produce pipelines easier"
   end
 
   # Run "mix help deps" to learn about dependencies.

@@ -1,6 +1,6 @@
 defmodule MQ.AMQPConfig do
   def config do
-    :rabbitex
+    :rabbit_mq_ex
     |> Application.get_env(:config, [])
   end
 
