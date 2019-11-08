@@ -290,6 +290,10 @@ In `mix.exs`:
   end
 ```
 
+The application might look like this:
+
+![Application](./application.png)
+
 Now, let's verify our producers and consumers work as expected. Run `iex -S mix`, then:
 
 To place a booking:
