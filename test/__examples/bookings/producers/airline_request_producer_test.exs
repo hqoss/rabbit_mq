@@ -45,8 +45,8 @@ defmodule BookingsTest.Producers.AirlineRequestProducer do
         flight_number: Nanoid.generate_non_secure()
       }
 
-      assert :ok = AirlineRequestProducer.place_booking(:ba, payload, publish_opts)
-      assert :ok = AirlineRequestProducer.place_booking(:qr, payload, publish_opts)
+      assert :ok = AirlineRequestProducer.place_booking(:british_airways, payload, publish_opts)
+      assert :ok = AirlineRequestProducer.place_booking(:qatar_airways, payload, publish_opts)
 
       assert_receive({:json, %{}, %{routing_key: "british_airways.place_booking"}}, 250)
       assert_receive({:json, %{}, %{routing_key: "qatar_airways.place_booking"}}, 250)
@@ -57,7 +57,7 @@ defmodule BookingsTest.Producers.AirlineRequestProducer do
       flight_number = "QR007"
       payload = %{date_time: date_time, flight_number: flight_number}
 
-      assert :ok = AirlineRequestProducer.place_booking(:qr, payload, publish_opts)
+      assert :ok = AirlineRequestProducer.place_booking(:qatar_airways, payload, publish_opts)
 
       assert_receive(
         {:json, %{"date_time" => ^date_time, "flight_number" => ^flight_number},
@@ -90,7 +90,7 @@ defmodule BookingsTest.Producers.AirlineRequestProducer do
           timestamp: timestamp
         )
 
-      assert :ok = AirlineRequestProducer.place_booking(:qr, payload, publish_opts)
+      assert :ok = AirlineRequestProducer.place_booking(:qatar_airways, payload, publish_opts)
 
       assert_receive(
         {:json, %{"date_time" => ^date_time, "flight_number" => ^flight_number},
@@ -110,8 +110,8 @@ defmodule BookingsTest.Producers.AirlineRequestProducer do
          } do
       payload = %{booking_id: Nanoid.generate_non_secure()}
 
-      assert :ok = AirlineRequestProducer.cancel_booking(:ba, payload, publish_opts)
-      assert :ok = AirlineRequestProducer.cancel_booking(:qr, payload, publish_opts)
+      assert :ok = AirlineRequestProducer.cancel_booking(:british_airways, payload, publish_opts)
+      assert :ok = AirlineRequestProducer.cancel_booking(:qatar_airways, payload, publish_opts)
 
       assert_receive({:json, %{}, %{routing_key: "british_airways.cancel_booking"}}, 250)
       assert_receive({:json, %{}, %{routing_key: "qatar_airways.cancel_booking"}}, 250)
@@ -123,7 +123,7 @@ defmodule BookingsTest.Producers.AirlineRequestProducer do
       booking_id = UUID.uuid4()
       payload = %{booking_id: booking_id}
 
-      assert :ok = AirlineRequestProducer.cancel_booking(:qr, payload, publish_opts)
+      assert :ok = AirlineRequestProducer.cancel_booking(:qatar_airways, payload, publish_opts)
 
       assert_receive(
         {:json, %{"booking_id" => ^booking_id},
@@ -155,7 +155,7 @@ defmodule BookingsTest.Producers.AirlineRequestProducer do
           timestamp: timestamp
         )
 
-      assert :ok = AirlineRequestProducer.cancel_booking(:qr, payload, publish_opts)
+      assert :ok = AirlineRequestProducer.cancel_booking(:qatar_airways, payload, publish_opts)
 
       assert_receive(
         {:json, %{"booking_id" => ^booking_id},

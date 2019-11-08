@@ -23,38 +23,25 @@ In order to publish messages onto an exchange, let's first create a simple Produ
 
 ```elixir
 defmodule Bookings.Producers.AirlineRequestProducer do
-  alias MQ.Producer
+  use MQ.Producer, exchange: "airline_request"
 
-  use Producer, exchange: "airline_request"
+  @valid_airlines ~w(british_airways qatar_airways)a
 
-  @valid_airline_codes ~w(ba qr)a
-
-  def place_booking(airline_code, %{date_time: _, flight_number: _} = params, opts)
-      when airline_code in @valid_airline_codes and is_list(opts) do
-    airline = airline(airline_code)
-    payload = payload(params)
+  @spec place_booking(String.t(), map()) :: :ok
+  def place_booking(airline, %{date_time: _, flight_number: _} = params, opts \\ [])
+      when airline in @valid_airlines and is_list(opts) do
+    payload = params |> Map.take([:date_time, :flight_number]) |> Jason.encode!()
     opts = opts |> Keyword.put(:routing_key, "#{airline}.place_booking")
-
     publish(payload, opts)
   end
 
-  def cancel_booking(airline_code, %{booking_id: _} = params, opts)
-      when airline_code in @valid_airline_codes and is_list(opts) do
-    airline = airline(airline_code)
-    payload = payload(params)
+  @spec cancel_booking(String.t(), map()) :: :ok
+  def cancel_booking(airline, %{booking_id: _} = params, opts \\ [])
+      when airline in @valid_airlines and is_list(opts) do
+    payload = params |> Map.take([:booking_id]) |> Jason.encode!()
     opts = opts |> Keyword.put(:routing_key, "#{airline}.cancel_booking")
-
     publish(payload, opts)
   end
-
-  defp payload(%{date_time: _, flight_number: _} = params),
-    do: params |> Map.take([:date_time, :flight_number]) |> Jason.encode!()
-
-  defp payload(%{booking_id: _} = params),
-    do: params |> Map.take([:booking_id]) |> Jason.encode!()
-
-  defp airline(:ba), do: "british_airways"
-  defp airline(:qr), do: "qatar_airways"
 end
 
 ```
@@ -410,8 +397,8 @@ defmodule BookingsTest.Producers.AirlineRequestProducer do
         flight_number: Nanoid.generate_non_secure()
       }
 
-      assert :ok = AirlineRequestProducer.place_booking(:ba, payload, publish_opts)
-      assert :ok = AirlineRequestProducer.place_booking(:qr, payload, publish_opts)
+      assert :ok = AirlineRequestProducer.place_booking(:british_airways, payload, publish_opts)
+      assert :ok = AirlineRequestProducer.place_booking(:qatar_airways, payload, publish_opts)
 
       assert_receive({:json, %{}, %{routing_key: "british_airways.place_booking"}}, 250)
       assert_receive({:json, %{}, %{routing_key: "qatar_airways.place_booking"}}, 250)
@@ -422,7 +409,7 @@ defmodule BookingsTest.Producers.AirlineRequestProducer do
       flight_number = "QR007"
       payload = %{date_time: date_time, flight_number: flight_number}
 
-      assert :ok = AirlineRequestProducer.place_booking(:qr, payload, publish_opts)
+      assert :ok = AirlineRequestProducer.place_booking(:qatar_airways, payload, publish_opts)
 
       assert_receive(
         {:json, %{"date_time" => ^date_time, "flight_number" => ^flight_number},
@@ -455,7 +442,7 @@ defmodule BookingsTest.Producers.AirlineRequestProducer do
           timestamp: timestamp
         )
 
-      assert :ok = AirlineRequestProducer.place_booking(:qr, payload, publish_opts)
+      assert :ok = AirlineRequestProducer.place_booking(:qatar_airways, payload, publish_opts)
 
       assert_receive(
         {:json, %{"date_time" => ^date_time, "flight_number" => ^flight_number},
