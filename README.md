@@ -226,7 +226,7 @@ end
 
 Before we put our producers and consumers to work, we need to make sure that the topology is reflected on the RabbitMQ broker we will use with our application. To do this, we will run
 
-### 1) Ensure topology
+### 1) Declare your topology
 
 ```bash
 mix rabbit.init
@@ -242,7 +242,7 @@ You should see the following in the console:
 
 ```
 
-### 2) Add `MQSupervisor` into your application
+### 2) Add `MQSupervisor` to your application
 
 Let's create a sample Application using the code we've already written.
 
