@@ -27,7 +27,7 @@ defmodule Bookings.Producers.AirlineRequestProducer do
 
   @valid_airlines ~w(british_airways qatar_airways)a
 
-  @spec place_booking(String.t(), map()) :: :ok
+  @spec place_booking(atom(), map()) :: :ok
   def place_booking(airline, %{date_time: _, flight_number: _} = params, opts \\ [])
       when airline in @valid_airlines and is_list(opts) do
     payload = params |> Map.take([:date_time, :flight_number]) |> Jason.encode!()
@@ -35,7 +35,7 @@ defmodule Bookings.Producers.AirlineRequestProducer do
     publish(payload, opts)
   end
 
-  @spec cancel_booking(String.t(), map()) :: :ok
+  @spec cancel_booking(atom(), map()) :: :ok
   def cancel_booking(airline, %{booking_id: _} = params, opts \\ [])
       when airline in @valid_airlines and is_list(opts) do
     payload = params |> Map.take([:booking_id]) |> Jason.encode!()
