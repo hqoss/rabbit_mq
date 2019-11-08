@@ -1,6 +1,18 @@
 # rabbit_mq_ex
 
-A better RabbitMQ client.
+The missing RabbitMQ client for Elixir.
+
+## Features (out of the box)
+
+* Connection supervision and Channel multiplexing
+* Built-in Producer and Consumer pooling (configurable)
+* Consistent Topology enforcement
+* SDK-like Producer API
+* Simple Consumer API with Message Processors
+* Testing is first-class (+ built-in testing helpers)
+* Trivial configuration
+* Real-world exmaples with tests
+* ... and more
 
 ## Installation
 
