@@ -295,21 +295,42 @@ Now, let's verify our producers and consumers work as expected. Run `iex -S mix`
 To place a booking:
 
 ```elixir
-iex(1)> Bookings.Producers.AirlineRequestProducer.place_booking(:qr, %{date_time: DateTime.utc_now() |> DateTime.to_iso8601(), flight_number: "QR007"}, [])
+iex(1)> payload = %{date_time: "2019-11-08T10:25:00.000000Z", flight_number: "QR007"}
+%{date_time: "2019-11-08T10:25:00.000000Z", flight_number: "QR007"}
+iex(2)> Bookings.Producers.AirlineRequestProducer.place_booking(:qatar_airways, payload, [])
 :ok
-iex(2)>
 
-[info] Attempting to book QR007 for Friday, 01 November 2019.
+[info] Attempting to book QR007 for Friday, 08 November 2019.
+
+[info] Successfully booked %{date_time: "2019-11-08T10:25:00.000000Z", external_booking_id: "4544d317-53e4-4827-a66b-ba3e48aed0fd", flight_number: "QR007", id: "b379bf61-f99d-47a6-8360-0aaeccd3d4f3", inserted_at: 1573208875278}.
 ```
 
 To cancel a booking:
 
 ```elixir
-iex(1)> Bookings.Producers.AirlineRequestProducer.cancel_booking(:qr, %{booking_id: "baf4dfde-50b1-4d55-9c76-44eae1159325"}, [])
+iex(1)> new_booking_attrs = %{date_time: "2019-11-08T10:25:00.000000Z", flight_number: "QR007", external_booking_id: "e53d026f-af7d-477f-8bd2-49e8da66d1ce"}
+%{
+  date_time: "2019-11-08T10:25:00.000000Z",
+  external_booking_id: "e53d026f-af7d-477f-8bd2-49e8da66d1ce",
+  flight_number: "QR007"
+}
+iex(2)> {:ok, booking} = Bookings.Store.insert(new_booking_attrs)
+{:ok,
+ %{
+   date_time: "2019-11-08T10:25:00.000000Z",
+   external_booking_id: "e53d026f-af7d-477f-8bd2-49e8da66d1ce",
+   flight_number: "QR007",
+   id: "42645924-0d6e-4924-8d5a-9fb9a0da394d",
+   inserted_at: 1573209097206
+ }}
+iex(3)> payload = %{booking_id: booking.id}
+%{booking_id: "42645924-0d6e-4924-8d5a-9fb9a0da394d"}
+iex(4)> Bookings.Producers.AirlineRequestProducer.cancel_booking(:qatar_airways, payload, [])
 :ok
-iex(2)>
 
-[info] Attempting to cancel booking baf4dfde-50b1-4d55-9c76-44eae1159325.
+[info] Attempting to cancel 42645924-0d6e-4924-8d5a-9fb9a0da394d, external id: e53d026f-af7d-477f-8bd2-49e8da66d1ce.
+
+[info] Booking 42645924-0d6e-4924-8d5a-9fb9a0da394d successfully cancelled.
 ```
 
 ## Testing
