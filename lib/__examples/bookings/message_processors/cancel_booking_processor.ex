@@ -10,9 +10,9 @@ defmodule Bookings.MessageProcessors.CancelBookingMessageProcessor do
   Calls a 3rd party API to cancel a booking, removes the booking from `Bookings.Store`.
   """
   @spec process_message(String.t(), map()) :: :ok | {:error, error()}
-  def process_message(payload_binary, _meta) do
-    with {:ok, payload} <- parse_message(payload_binary),
-         {:ok, booking} <- Store.get_existing(payload.booking_id) do
+  def process_message(payload, _meta) do
+    with {:ok, message} <- parse_message(payload),
+         {:ok, booking} <- Store.get_existing(message.booking_id) do
       %{id: booking_id, external_booking_id: external_booking_id} = booking
 
       Logger.info("Attempting to cancel #{booking_id}, external id: #{external_booking_id}.")
@@ -28,8 +28,8 @@ defmodule Bookings.MessageProcessors.CancelBookingMessageProcessor do
     end
   end
 
-  defp parse_message(payload_binary) do
-    case Jason.decode(payload_binary) do
+  defp parse_message(payload) do
+    case Jason.decode(payload) do
       {:ok, %{"booking_id" => booking_id}} ->
         {:ok, %{booking_id: booking_id}}
 
