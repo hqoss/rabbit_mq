@@ -4,12 +4,13 @@ defmodule MQ.MixProject do
   def project do
     [
       app: :rabbit_mq_ex,
-      version: "1.0.0-0.0.2",
+      version: "1.0.0-0.0.3",
       elixir: "~> 1.8",
       start_permanent: Mix.env() == :prod,
       aliases: aliases(),
       deps: deps(),
       description: description(),
+      docs: docs(),
       package: package(),
       elixirc_paths: elixirc_paths(Mix.env()),
       dialyzer: [plt_add_apps: [:mix]]
@@ -24,7 +25,13 @@ defmodule MQ.MixProject do
     ]
   end
 
-  defp package() do
+  defp docs do
+    [
+      filter_prefix: "MQ"
+    ]
+  end
+
+  defp package do
     [
       # These are the default files included in the package
       files: ~w(lib/mq test/__support .formatter.exs mix.exs README*),
