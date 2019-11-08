@@ -222,9 +222,11 @@ end
 
 ```
 
-### Putting it all together
+## Putting it all together
 
 Before we put our producers and consumers to work, we need to make sure that the topology is reflected on the RabbitMQ broker we will use with our application. To do this, we will run
+
+### 1) Ensure topology
 
 ```bash
 mix rabbit.init
@@ -240,7 +242,9 @@ You should see the following in the console:
 
 ```
 
-Now, let's create our Application.
+### 2) Add `MQSupervisor` into your application
+
+Let's create a sample Application using the code we've already written.
 
 ```elixir
 defmodule Bookings.Application do
@@ -290,9 +294,31 @@ In `mix.exs`:
   end
 ```
 
-The application might look like this:
+Your application will now look like this:
 
 ![Application](./application.png)
+
+### 3) Configure `MQSupervisor` according to your needs
+
+You will notice that both the consumers and the producers are pooled, and the **default number of workers is 3**. You can change this in the opts:
+
+```elixir
+    opts = [
+      consumers: [
+        {PlaceBookingMessageProcessor,
+         queue: "airline_request_queue/*.place_booking/bookings_app",
+         workers: 6},
+        {CancelBookingMessageProcessor,
+         queue: "airline_request_queue/*.cancel_booking/bookings_app",
+         workers: 2}
+      ],
+      producers: [
+        {AirlineRequestProducer, workers: 2}
+      ]
+    ]
+```
+
+### 4) Test in `iex`
 
 Now, let's verify our producers and consumers work as expected. Run `iex -S mix`, then:
 
