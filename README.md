@@ -2,7 +2,7 @@
 
 The missing RabbitMQ client for Elixir.
 
-## Features (out of the box)
+### Features (out of the box)
 
 * Connection supervision and Channel multiplexing
 * Built-in Producer and Consumer pooling (configurable)
