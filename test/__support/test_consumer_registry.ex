@@ -30,9 +30,9 @@ defmodule MQTest.Support.TestConsumerRegistry do
     end
   end
 
-  @spec delete_entry(String.t()) :: :ok
-  defp delete_entry(consumer_tag) do
-    _ = :ets.delete(@registry, consumer_tag)
-    :ok
-  end
+  # @spec delete_entry(String.t()) :: :ok
+  # defp delete_entry(consumer_tag) do
+  #   _ = :ets.delete(@registry, consumer_tag)
+  #   :ok
+  # end
 end

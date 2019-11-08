@@ -47,7 +47,7 @@ defmodule MQ.MixProject do
       {:poolboy, "~> 1.5.1"},
       {:timex, "~> 3.5"},
       {:uuid, "~> 1.1"},
-      # Test deps
+      # Dev/Test-only deps
       {:ex_check, ">= 0.0.0", only: :dev, runtime: false},
       {:credo, ">= 0.0.0", only: :dev, runtime: false},
       {:dialyxir, ">= 0.0.0", only: :dev, runtime: false},

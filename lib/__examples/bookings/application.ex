@@ -2,6 +2,7 @@ defmodule Bookings.Application do
   alias MQ.Supervisor, as: MQSupervisor
 
   alias Bookings.Producers.AirlineRequestProducer
+  alias Bookings.Store
 
   alias Bookings.MessageProcessors.{
     PlaceBookingMessageProcessor,
@@ -24,7 +25,8 @@ defmodule Bookings.Application do
     ]
 
     children = [
-      {MQSupervisor, opts}
+      {MQSupervisor, opts},
+      {Store, []}
       # ... add more children here
     ]
 

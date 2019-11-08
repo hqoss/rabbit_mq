@@ -132,17 +132,52 @@ To consume and process messages from the queues above, we will need to create me
 
 ```elixir
 defmodule Bookings.MessageProcessors.PlaceBookingMessageProcessor do
+  alias Bookings.Store
+
+  import Bookings.Core.DateTimeFormatter, only: [format_iso_date_time: 2]
+
   require Logger
 
   @date_format "{WDfull}, {0D} {Mfull} {YYYY}"
 
-  def process_message(payload, _meta) do
-    with {:ok, %{"date_time" => date_time_iso, "flight_number" => flight_number}} <-
-           Jason.decode(payload),
-         {:ok, date_time, _} <- DateTime.from_iso8601(date_time_iso),
-         {:ok, formatted_date} <- Timex.format(date_time, @date_format) do
-      Logger.info("Attempting to book #{flight_number} for #{formatted_date}.")
+  @type error() :: :invalid_payload | Jason.DecodeError | :invalid_format
+
+  @doc """
+  Processes `*.place_booking` messages from the `airline_request` exchange.
+  Calls a 3rd party API to place a booking, saves the booking into `Bookings.Store`.
+  """
+  @spec process_message(String.t(), map()) :: :ok | {:error, error()}
+  def process_message(payload_binary, _meta) do
+    with {:ok, payload} <- parse_message(payload_binary),
+         {:ok, formatted_date} <- format_iso_date_time(payload.date_time, @date_format) do
+      Logger.info("Attempting to book #{payload.flight_number} for #{formatted_date}.")
+
+      # Fake HTTP call to a 3rd party, receive `external_booking_id`,
+      # for example: `AirlineClient.place_booking(payload)`.
+      external_booking_id = UUID.uuid4()
+
+      attrs = Map.merge(payload, %{external_booking_id: external_booking_id})
+
+      # Not matching this would result in an exception which will fall
+      # back to `{:error, :retry_once}`, so we let it fail.
+      {:ok, booking} = Store.insert(attrs)
+
+      Logger.info("Successfully booked #{inspect(booking)}.")
+
       :ok
+    end
+  end
+
+  defp parse_message(payload_binary) do
+    case Jason.decode(payload_binary) do
+      {:ok, %{"date_time" => date_time, "flight_number" => flight_number}} ->
+        {:ok, %{date_time: date_time, flight_number: flight_number}}
+
+      {:ok, _} ->
+        {:error, :invalid_payload}
+
+      error ->
+        error
     end
   end
 end
@@ -151,12 +186,45 @@ end
 
 ```elixir
 defmodule Bookings.MessageProcessors.CancelBookingMessageProcessor do
+  alias Bookings.Store
+
   require Logger
 
-  def process_message(payload, _meta) do
-    with {:ok, %{"booking_id" => booking_id}} <- Jason.decode(payload) do
-      Logger.info("Attempting to cancel booking #{booking_id}.")
+  @type error() :: :invalid_payload | Jason.DecodeError | :not_found
+
+  @doc """
+  Processes `*.cancel_booking` messages from the `airline_request` exchange.
+  Calls a 3rd party API to cancel a booking, removes the booking from `Bookings.Store`.
+  """
+  @spec process_message(String.t(), map()) :: :ok | {:error, error()}
+  def process_message(payload_binary, _meta) do
+    with {:ok, payload} <- parse_message(payload_binary),
+         {:ok, booking} <- Store.get_existing(payload.booking_id) do
+      %{id: booking_id, external_booking_id: external_booking_id} = booking
+
+      Logger.info("Attempting to cancel #{booking_id}, external id: #{external_booking_id}.")
+
+      # Fake HTTP call to a 3rd party to cancel the booking, using `external_booking_id`,
+      # for example: `AirlineClient.cancel_booking(external_booking_id)`.
+
+      :ok = Store.delete(booking_id)
+
+      Logger.info("Booking #{booking_id} successfully cancelled.")
+
       :ok
+    end
+  end
+
+  defp parse_message(payload_binary) do
+    case Jason.decode(payload_binary) do
+      {:ok, %{"booking_id" => booking_id}} ->
+        {:ok, %{booking_id: booking_id}}
+
+      {:ok, _} ->
+        {:error, :invalid_payload}
+
+      error ->
+        error
     end
   end
 end
@@ -210,7 +278,8 @@ defmodule Bookings.Application do
     ]
 
     children = [
-      {MQSupervisor, opts}
+      {MQSupervisor, opts},
+      {Store, []}
       # ... add more children here
     ]
 
@@ -270,6 +339,17 @@ Then in `test/test_helper.exs`:
 ```elixir
 :ok = MQTest.Support.TestConsumerRegistry.init()
 ExUnit.start()
+```
+
+It's also strongly recommended to add an alias for your test command so that your RabbitMQ topology is asserted prior to every test run:
+
+```elixir
+  defp aliases do
+    [
+      test: ["rabbit.init", "test"]
+    ]
+  end
+
 ```
 
 ### Testing producers
@@ -356,7 +436,8 @@ defmodule BookingsTest.Producers.AirlineRequestProducer do
       refute_receive 100
     end
 
-    test "place_booking/3 produces a message with custom metadata, but does not override `routing_key`", %{publish_opts: publish_opts} do
+    test "place_booking/3 produces a message with custom metadata, but does not override `routing_key`",
+         %{publish_opts: publish_opts} do
       date_time = DateTime.utc_now() |> DateTime.to_iso8601()
       flight_number = "QR007"
       payload = %{date_time: date_time, flight_number: flight_number}
@@ -393,6 +474,172 @@ defmodule BookingsTest.Producers.AirlineRequestProducer do
 end
 
 ```
+
+### Testing message processors
+
+Compared to producers, testing message processors is trivial as these modules are pure workers, free of dependencies.
+
+We will look at how to test the produce/consume flow end-to-end in the next section.
+
+Let's take a lookg at the `PlaceBooking` message processor first:
+
+```elixir
+defmodule BookingsTest.MessageProcessors.PlaceBookingMessageProcessor do
+  alias Bookings.MessageProcessors.PlaceBookingMessageProcessor
+  alias Bookings.Store
+
+  use ExUnit.Case
+
+  setup_all do
+    assert {:ok, _pid} = start_supervised(Store)
+    :ok
+  end
+
+  setup do
+    on_exit(fn ->
+      Store.delete_all()
+    end)
+
+    :ok
+  end
+
+  describe "Bookings.MessageProcessors.PlaceBookingMessageProcessor.process_message/2" do
+    test "makes a new booking and places it into `Bookings.Store`" do
+      payload = %{
+        date_time: DateTime.utc_now() |> DateTime.to_iso8601(),
+        flight_number: Nanoid.generate_non_secure()
+      }
+
+      payload_binary = Jason.encode!(payload)
+
+      assert :ok = PlaceBookingMessageProcessor.process_message(payload_binary, %{})
+
+      assert {:ok, [{id, booking}]} = Store.get_all()
+
+      assert booking.id == id
+      assert booking.date_time == payload.date_time
+      assert booking.flight_number == payload.flight_number
+      assert is_binary(booking.external_booking_id) == true
+      assert is_integer(booking.inserted_at) == true
+    end
+
+    test "returns `{:error, :invalid_payload}` if JSON payload is incomplete" do
+      payload = %{
+        flight_number: Nanoid.generate_non_secure()
+      }
+
+      payload_binary = Jason.encode!(payload)
+
+      assert {:error, :invalid_payload} =
+               PlaceBookingMessageProcessor.process_message(payload_binary, %{})
+
+      assert {:ok, []} = Store.get_all()
+    end
+
+    test "returns `{:error, %Jason.DecodeError{}}` if JSON payload is invalid" do
+      payload_binary = "Hey, boss!"
+
+      assert {:error, %Jason.DecodeError{}} =
+               PlaceBookingMessageProcessor.process_message(payload_binary, %{})
+
+      assert {:ok, []} = Store.get_all()
+    end
+
+    test "returns `{:error, :invalid_format}` if `date_time` is invalid" do
+      payload = %{
+        date_time: "invalid date time",
+        flight_number: Nanoid.generate_non_secure()
+      }
+
+      payload_binary = Jason.encode!(payload)
+
+      assert {:error, :invalid_format} =
+               PlaceBookingMessageProcessor.process_message(payload_binary, %{})
+
+      assert {:ok, []} = Store.get_all()
+    end
+  end
+end
+
+```
+
+And for our `CancelBooking` message processor, we would do something similar:
+
+```elixir
+defmodule BookingsTest.MessageProcessors.CancelBookingMessageProcessor do
+  alias Bookings.MessageProcessors.CancelBookingMessageProcessor
+  alias Bookings.Store
+
+  use ExUnit.Case
+
+  setup_all do
+    assert {:ok, _pid} = start_supervised(Store)
+    :ok
+  end
+
+  setup do
+    attrs = %{
+      date_time: DateTime.utc_now() |> DateTime.to_iso8601(),
+      flight_number: Nanoid.generate_non_secure(),
+      external_booking_id: UUID.uuid4()
+    }
+
+    {:ok, booking} = Store.insert(attrs)
+
+    on_exit(fn ->
+      Store.delete_all()
+    end)
+
+    [booking: booking]
+  end
+
+  describe "Bookings.MessageProcessors.CancelBookingMessageProcessor.process_message/2" do
+    test "cancels an existing booking and removes it from `Bookings.Store`", %{booking: booking} do
+      payload = %{booking_id: booking.id}
+      payload_binary = Jason.encode!(payload)
+
+      assert :ok = CancelBookingMessageProcessor.process_message(payload_binary, %{})
+
+      assert {:error, :not_found} = Store.get_existing(booking.id)
+    end
+
+    test "returns `{:error, :invalid_payload}` if JSON payload is incomplete", %{booking: booking} do
+      payload = %{unimportant_key: Nanoid.generate_non_secure()}
+      payload_binary = Jason.encode!(payload)
+
+      assert {:error, :invalid_payload} =
+               CancelBookingMessageProcessor.process_message(payload_binary, %{})
+
+      assert {:ok, _booking} = Store.get_existing(booking.id)
+    end
+
+    test "returns `{:error, %Jason.DecodeError{}}` if JSON payload is invalid", %{
+      booking: booking
+    } do
+      payload_binary = "Hey, boss!"
+
+      assert {:error, %Jason.DecodeError{}} =
+               CancelBookingMessageProcessor.process_message(payload_binary, %{})
+
+      assert {:ok, _booking} = Store.get_existing(booking.id)
+    end
+
+    test "returns `{:error, :not_found}` if booking not found in `Bookings.Store`", %{
+      booking: booking
+    } do
+      payload = %{booking_id: UUID.uuid4()}
+      payload_binary = Jason.encode!(payload)
+
+      assert {:error, :not_found} =
+               CancelBookingMessageProcessor.process_message(payload_binary, %{})
+
+      assert {:ok, _booking} = Store.get_existing(booking.id)
+    end
+  end
+end
+
+```
+
 
 ### Documentation
 
