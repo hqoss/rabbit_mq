@@ -247,9 +247,9 @@ end
 
 ## Putting it all together
 
-Before we put our producers and consumers to work, we need to make sure that the topology is reflected on the RabbitMQ broker we will use with our application. To do this, we will run
-
 ### 1) Declare your topology
+
+Before we put our producers and consumers to work, we need to make sure that the topology is reflected on the RabbitMQ broker we will use with our application. To do this, we will run
 
 ```bash
 mix rabbit.init
@@ -271,13 +271,24 @@ Let's create a sample Application using the code we've already written.
 
 ```elixir
 defmodule Bookings.Application do
+  @moduledoc """
+  Describes the entire produce/consume workflow.
+
+  For demonstration purposes only!
+
+  You would most likely structure your applications differently,
+  for example the corresponding producers and consumers would
+  live in separate services/apps. 
+  """
+
   alias MQ.Supervisor, as: MQSupervisor
 
   alias Bookings.Producers.AirlineRequestProducer
+  alias Bookings.Store
 
   alias Bookings.MessageProcessors.{
-    PlaceBookingMessageProcessor,
-    CancelBookingMessageProcessor
+    CancelBookingMessageProcessor,
+    PlaceBookingMessageProcessor
   }
 
   use Application
