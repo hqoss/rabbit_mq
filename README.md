@@ -33,7 +33,7 @@ by adding `rabbit_mq_ex` to your list of dependencies in `mix.exs`:
 ```elixir
 def deps do
   [
-    {:rabbit_mq_ex, "~> 1.0.0-0.0.4"}
+    {:rabbit_mq_ex, "~> 1.0.0-0.0.5"}
   ]
 end
 ```
