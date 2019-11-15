@@ -33,7 +33,7 @@ by adding `rabbit_mq_ex` to your list of dependencies in `mix.exs`:
 ```elixir
 def deps do
   [
-    {:rabbit_mq_ex, "~> 1.0.0-0.0.5"}
+    {:rabbit_mq_ex, "~> 1.0.0-1.0.0"}
   ]
 end
 ```
@@ -73,40 +73,45 @@ In this specific example, we will publish messages onto the `airline_request` ex
 
 ### Topology
 
-To set up the exchange and the associated bindings, we will create a `Topology` module that all our services will use to interact with RabbitMQ.
+To set up the exchange and the associated bindings, let's configure `rabbit_mq_ex`.
+
+* `:amqp_url` will be used by the `MQ.ConnectionManager` module to connect to the broker
+* `:topology` will be used by the `mix rabbit.init` script to set up the exchanges, queues, and bindings
+
+It's recommended to configure your topology in the "global" `config.exs`, as it ought to be identical across environments.
 
 ```elixir
-defmodule Bookings.Topology do
-  alias MQ.Topology
+use Mix.Config
 
-  @exchanges ~w(airline_request)
+config :rabbit_mq_ex, :topology, [
+  {"airline_request",
+   type: :topic,
+   durable: true,
+   routing_keys: [
+     {"*.place_booking",
+      queue: "airline_request_queue/*.place_booking/bookings_app",
+      durable: true,
+      dlq: "airline_request_dead_letter_queue"},
+     {"*.cancel_booking",
+      queue: "airline_request_queue/*.cancel_booking/bookings_app",
+      durable: true,
+      dlq: "airline_request_dead_letter_queue"}
+   ]}
+]
 
-  @behaviour Topology
+import_config "#{Mix.env()}.exs"
+```
 
-  def gen do
-    @exchanges |> Enum.map(&exchange/1)
-  end
+As for the connection to the broker, you may want to configure this separately in each of your environment-specific configs, e.g. `dev.exs` or `test.exs`.
 
-  defp exchange("airline_request" = exchange) do
-    {exchange,
-     type: :topic,
-     durable: true,
-     routing_keys: [
-       {"*.place_booking",
-        queue: "#{exchange}_queue/*.place_booking/bookings_app",
-        durable: true,
-        dlq: "#{exchange}_dead_letter_queue"},
-       {"*.cancel_booking",
-        queue: "#{exchange}_queue/*.cancel_booking/bookings_app",
-        durable: true,
-        dlq: "#{exchange}_dead_letter_queue"}
-     ]}
-  end
-end
+```elixir
+use Mix.Config
+
+config :rabbit_mq_ex, :amqp_url, "amqp://guest:guest@localhost:5672"
 
 ```
 
-We will use this to ensure our RabbitMQ setup is consistent across services and all exchanges, queues and bindings are correctly configured before we start our services.
+We will use this approach to ensure our RabbitMQ setup is consistent across services and all exchanges, queues and bindings are correctly configured before we start our services.
 
 As shown in the example above, we will declare 3 queues:
 
@@ -118,23 +123,21 @@ Please note that the strategy for naming queues is largely dependent on your use
 
 `#{exchange_name}_queue/#{routing_key}/#{consuming_app_name}`
 
-### Application configuration
+To set this up, make sure you have Rabbit MQ running locally and can connect to it, then run:
 
-Now that we have our topology defined, let's configure the `:rabbit_mq_ex` application environment to make use of it.
-
-```elixir
-use Mix.Config
-
-config :rabbit_mq_ex, :config,
-  amqp_url: "amqp://guest:guest@localhost:5672",
-  topology: Bookings.Topology
+```bash
+mix rabbit.init
 
 ```
 
-This configuration will be used as follows:
+You should see the following in the console:
 
-* `:amqp_url` by the `MQ.ConnectionManager` module to connect to the broker
-* `:topology` by the `mix rabbit.init` script to set up the exchanges, queues, and bindings
+```bash
+[debug] Declared airline_request_queue/*.place_booking/bookings_app queue: %{args: [{"x-dead-letter-exchange", :longstr, ""}, {"x-dead-letter-routing-key", :longstr, "airline_request_dead_letter_queue"}], durable: true, exchange: "airline_request", exclusive: false, queue: "airline_request_queue/*.place_booking/bookings_app", routing_key: "*.place_booking"}
+
+[debug] Declared airline_request_queue/*.cancel_booking/bookings_app queue: %{args: [{"x-dead-letter-exchange", :longstr, ""}, {"x-dead-letter-routing-key", :longstr, "airline_request_dead_letter_queue"}], durable: true, exchange: "airline_request", exclusive: false, queue: "airline_request_queue/*.cancel_booking/bookings_app", routing_key: "*.cancel_booking"}
+
+```
 
 ### Consumers and message processing
 

@@ -4,21 +4,42 @@ defmodule MQ.Topology.Config do
   defmodule DeadLetterQueueConfig do
     @enforce_keys [:name]
     defstruct name: nil, durable: true, exclusive: false
+
+    @type t() :: %__MODULE__{
+            name: String.t(),
+            durable: boolean(),
+            exclusive: boolean()
+          }
   end
 
   defmodule QueueConfig do
     @enforce_keys [:name, :durable, :exclusive, :binding, :args]
     defstruct name: nil, durable: nil, exclusive: nil, binding: nil, args: nil
+
+    @type t() :: %__MODULE__{
+            name: String.t(),
+            durable: boolean(),
+            exclusive: boolean(),
+            binding: {String.t(), String.t(), String.t()},
+            args: list({String.t(), atom(), String.t()})
+          }
   end
 
   defmodule TopicExchangeConfig do
     @enforce_keys [:name, :durable, :queues]
-    defstruct name: nil, durable: nil, type: :topic, queues: nil
+    defstruct name: nil, durable: nil, type: :topic, queues: []
+
+    @type t() :: %__MODULE__{
+            name: String.t(),
+            durable: boolean(),
+            type: :topic,
+            queues: list(QueueConfig.t())
+          }
   end
 
+  @spec gen() :: list(TopicExchangeConfig.t())
   def gen do
     AMQPConfig.topology()
-    |> apply(:gen, [])
     |> Enum.map(&exchange_config/1)
   end
 

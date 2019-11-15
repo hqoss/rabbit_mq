@@ -28,8 +28,8 @@ defmodule MQ.Topology.Setup do
 
     with {:ok, connection} <- Connection.open(amqp_url),
          {:ok, channel} <- Channel.open(connection),
-         results <- channel |> setup(topology),
-         :ok <- channel |> Channel.close() do
+         results <- setup(channel, topology),
+         :ok <- Channel.close(channel) do
       {:ok, results}
     end
   end
@@ -51,7 +51,7 @@ defmodule MQ.Topology.Setup do
   end
 
   defp setup_queues(channel, queues) when is_list(queues) do
-    queues |> Enum.map(&setup_queues(channel, &1))
+    Enum.map(queues, &setup_queues(channel, &1))
   end
 
   defp setup_queues(
@@ -65,12 +65,12 @@ defmodule MQ.Topology.Setup do
   end
 
   defp assert_exchange(channel, :topic, name, durable) do
-    :ok = channel |> Exchange.topic(name, durable: durable)
+    :ok = Exchange.topic(channel, name, durable: durable)
     channel
   end
 
   defp assert_dead_letter_queue(channel, %DeadLetterQueueConfig{name: name, durable: durable}) do
-    {:ok, _} = channel |> Queue.declare(name, durable: durable)
+    {:ok, _} = Queue.declare(channel, name, durable: durable)
     channel
   end
 
@@ -81,13 +81,13 @@ defmodule MQ.Topology.Setup do
          args: arguments
        }) do
     {:ok, %{queue: queue}} =
-      channel |> Queue.declare(name, durable: durable, exclusive: exclusive, arguments: arguments)
+      Queue.declare(channel, name, durable: durable, exclusive: exclusive, arguments: arguments)
 
     {channel, queue}
   end
 
   defp bind_queue({channel, queue}, %QueueConfig{binding: {exchange, "", routing_key}} = config) do
-    :ok = channel |> Queue.bind(queue, exchange, routing_key: routing_key)
+    :ok = Queue.bind(channel, queue, exchange, routing_key: routing_key)
     result(queue, config)
   end
 
@@ -95,7 +95,7 @@ defmodule MQ.Topology.Setup do
          {channel, queue},
          %QueueConfig{binding: {exchange, queue, routing_key}} = config
        ) do
-    :ok = channel |> Queue.bind(queue, exchange, routing_key: routing_key)
+    :ok = Queue.bind(channel, queue, exchange, routing_key: routing_key)
     result(queue, config)
   end
 
