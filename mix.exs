@@ -4,7 +4,7 @@ defmodule MQ.MixProject do
   def project do
     [
       app: :rabbit_mq_ex,
-      version: "1.0.0-1.0.0",
+      version: "1.0.0-1.0.1",
       elixir: "~> 1.8",
       start_permanent: Mix.env() == :prod,
       aliases: aliases(),
@@ -36,7 +36,7 @@ defmodule MQ.MixProject do
   defp package do
     [
       # These are the default files included in the package
-      files: ~w(lib/mq test/__support .formatter.exs mix.exs README*),
+      files: ~w(lib/core lib/mq test/__support .formatter.exs mix.exs README*),
       licenses: ["Apache 2.0"],
       links: %{"GitHub" => "https://github.com/qworks-io/rabbit_mq_ex.git"},
       maintainers: ["Slavo Vojacek"]
