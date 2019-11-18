@@ -4,7 +4,7 @@ defmodule MQ.MixProject do
   def project do
     [
       app: :rabbit_mq_ex,
-      version: "1.0.0-1.0.3",
+      version: "1.0.0-1.0.4",
       elixir: "~> 1.8",
       start_permanent: Mix.env() == :prod,
       aliases: aliases(),
@@ -32,7 +32,7 @@ defmodule MQ.MixProject do
     [
       filter_prefix: "MQ",
       main: "MQ.Supervisor",
-      nest_modules_by_prefix: [MQ.Consumer, MQ.Topology]
+      nest_modules_by_prefix: [MQ.Consumer, MQ.Topology, MQ.Support]
     ]
   end
 
