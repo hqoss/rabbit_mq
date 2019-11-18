@@ -33,7 +33,7 @@ by adding `rabbit_mq_ex` to your list of dependencies in `mix.exs`:
 ```elixir
 def deps do
   [
-    {:rabbit_mq_ex, "~> 1.0.0-1.0.1"}
+    {:rabbit_mq_ex, "~> 1.0.0-1.0.3"}
   ]
 end
 ```
@@ -83,6 +83,7 @@ It's recommended to configure your topology in the "global" `config.exs`, as it 
 ```elixir
 use Mix.Config
 
+# Set up RabbitMQ topology
 config :rabbit_mq_ex, :topology, [
   {"airline_request",
    type: :topic,
@@ -98,6 +99,14 @@ config :rabbit_mq_ex, :topology, [
       dlq: "airline_request_dead_letter_queue"}
    ]}
 ]
+
+# Prevent excessive logging (originating from underlying :amqp library)
+config :logger, handle_otp_reports: false
+
+:logger.add_primary_filter(
+  :ignore_rabbitmq_progress_reports,
+  {&:logger_filters.domain/2, {:stop, :equal, [:progress]}}
+)
 
 import_config "#{Mix.env()}.exs"
 ```
@@ -407,9 +416,7 @@ In `config/test.exs`:
 ```elixir
 use Mix.Config
 
-config :rabbit_mq_ex, :config,
-  amqp_url: "amqp://guest:guest@localhost:5672",
-  topology: Bookings.Topology
+config :rabbit_mq_ex, :amqp_url: "amqp://guest:guest@localhost:5672"
 
 ```
 
@@ -450,6 +457,8 @@ defmodule BookingsTest.Producers.AirlineRequestProducer do
   use RabbitCase
 
   setup_all do
+    # Omit this if your application starts the producer by default
+    # as part of your supervision tree.
     assert {:ok, _pid} = start_supervised(AirlineRequestProducer.child_spec())
 
     # Make sure our tests receive all messages published to the `airline_request`
