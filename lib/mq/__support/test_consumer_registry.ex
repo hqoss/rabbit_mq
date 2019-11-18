@@ -1,4 +1,4 @@
-defmodule MQTest.Support.TestConsumerRegistry do
+defmodule MQ.Support.TestConsumerRegistry do
   require Logger
 
   @registry :mq_support_test_consumer_registry

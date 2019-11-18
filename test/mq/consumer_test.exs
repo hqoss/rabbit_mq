@@ -1,13 +1,9 @@
 defmodule MQTest.Consumer do
   alias MQ.ConnectionManager
-  alias MQTest.Support.{RabbitCase, ExclusiveQueue, TestConsumer, Producers}
-  alias Producers.AuditLogProducer
+  alias MQ.Support.{RabbitCase, ExclusiveQueue, TestConsumer}
+  alias MQTest.Support.Producers.AuditLogProducer
 
   use RabbitCase
-
-  # @this_module __MODULE__
-
-  # doctest MQ.Consumer
 
   setup_all do
     assert {:ok, _pid} = start_supervised(AuditLogProducer.child_spec())

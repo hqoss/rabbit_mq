@@ -416,7 +416,7 @@ config :rabbit_mq_ex, :config,
 Then in `test/test_helper.exs`:
 
 ```elixir
-:ok = MQTest.Support.TestConsumerRegistry.init()
+:ok = MQ.Support.TestConsumerRegistry.init()
 ExUnit.start()
 ```
 
@@ -444,7 +444,7 @@ Later we will, of course, try to assert the same with `cancel_booking/3`.
 ```elixir
 defmodule BookingsTest.Producers.AirlineRequestProducer do
   alias MQ.ConnectionManager
-  alias MQTest.Support.{RabbitCase, ExclusiveQueue, TestConsumer}
+  alias MQ.Support.{RabbitCase, ExclusiveQueue, TestConsumer}
   alias Bookings.Producers.AirlineRequestProducer
 
   use RabbitCase

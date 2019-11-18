@@ -1,6 +1,6 @@
 defmodule BookingsTest.Producers.AirlineRequestProducer do
   alias MQ.ConnectionManager
-  alias MQTest.Support.{RabbitCase, ExclusiveQueue, TestConsumer}
+  alias MQ.Support.{RabbitCase, ExclusiveQueue, TestConsumer}
   alias Bookings.Producers.AirlineRequestProducer
 
   use RabbitCase

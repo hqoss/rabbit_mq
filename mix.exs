@@ -4,12 +4,15 @@ defmodule MQ.MixProject do
   def project do
     [
       app: :rabbit_mq_ex,
-      version: "1.0.0-1.0.2",
+      version: "1.0.0-1.0.3",
       elixir: "~> 1.8",
       start_permanent: Mix.env() == :prod,
       aliases: aliases(),
       deps: deps(),
       description: description(),
+      dialyzer: [
+        plt_add_apps: [:ex_unit, :mix]
+      ],
       docs: docs(),
       package: package(),
       elixirc_paths: elixirc_paths(Mix.env()),
