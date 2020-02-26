@@ -1,7 +1,7 @@
 defmodule MQTest.Support.Producers.AuditLogProducer do
   use MQ.Producer, exchange: "audit_log"
 
-  @valid_types ~w(login, logout, change_password, update_profile)a
+  @valid_types ~w(login logout change_password update_profile)a
 
   @spec publish_event(String.t(), atom(), keyword()) :: :ok
   def publish_event(user_id, type, opts)

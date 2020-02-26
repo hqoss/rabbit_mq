@@ -1,6 +1,4 @@
-# This file is responsible for configuring your application
-# and its dependencies with the aid of the Mix.Config module.
-use Mix.Config
+import Config
 
 config :logger, :console,
   level: :info,
@@ -13,6 +11,10 @@ config :logger, handle_otp_reports: false
   :ignore_rabbitmq_progress_reports,
   {&:logger_filters.domain/2, {:stop, :equal, [:progress]}}
 )
+
+config :lager,
+  error_logger_redirect: false,
+  handlers: [level: :critical]
 
 config :rabbit_mq_ex, :topology, [
   {"airline_request",

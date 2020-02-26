@@ -4,8 +4,8 @@ defmodule MQ.MixProject do
   def project do
     [
       app: :rabbit_mq_ex,
-      version: "1.0.0-1.0.5",
-      elixir: "~> 1.8",
+      version: "1.0.0-alpha-1",
+      elixir: "~> 1.10",
       start_permanent: Mix.env() == :prod,
       aliases: aliases(),
       deps: deps(),
@@ -23,7 +23,7 @@ defmodule MQ.MixProject do
   # Run "mix help compile.app" to learn about applications.
   def application do
     [
-      extra_applications: [:logger]
+      extra_applications: [:lager, :logger, :timex]
       # mod: {Bookings.Application, []}
     ]
   end
@@ -53,11 +53,11 @@ defmodule MQ.MixProject do
   # Run "mix help deps" to learn about dependencies.
   defp deps do
     [
-      {:amqp, "~> 1.3"},
+      {:amqp, "~> 1.4"},
       {:jason, "~> 1.1"},
       {:nanoid, "~> 2.0.2"},
       {:poolboy, "~> 1.5.1"},
-      {:timex, "~> 3.5"},
+      {:timex, "~> 3.6"},
       {:uuid, "~> 1.1"},
       # Dev/Test-only deps
       {:ex_check, ">= 0.0.0", only: :dev, runtime: false},

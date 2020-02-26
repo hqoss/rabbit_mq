@@ -4,6 +4,7 @@ defmodule MQ.ChannelRegistry do
   require Logger
 
   @registry :mq_channel_registry
+
   # @max_channel_count 64
 
   @spec init() :: :ok
