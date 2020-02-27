@@ -5,16 +5,15 @@ config :logger, :console,
   format: {Core.LogFormatter, :format},
   metadata: :all
 
-config :logger, handle_otp_reports: false
-
-:logger.add_primary_filter(
-  :ignore_rabbitmq_progress_reports,
-  {&:logger_filters.domain/2, {:stop, :equal, [:progress]}}
-)
-
 config :lager,
   error_logger_redirect: false,
   handlers: [level: :critical]
+
+config :rabbit_mq_ex,
+  amqp_url: "amqp://guest:guest@localhost:5672",
+  heartbeat_interval_sec: 15,
+  reconnect_interval_ms: 2500,
+  max_channels_per_connection: 16
 
 config :rabbit_mq_ex, :topology, [
   {"airline_request",

@@ -1,27 +1,34 @@
 defmodule Core.LogFormatter do
   @moduledoc """
-  Useful log formatter, outputs JSON in `prod`.
+  Useful log formatter, should output JSON in prod environment.
   """
 
   @doc false
-  def format(level, message, {date, {hh, mm, ss, _ms}} = timestamp, metadata) do
+  def format(level, message, {date, {hh, mm, ss, ms}} = timestamp, metadata) do
     iso_timestamp =
       {date, {hh, mm, ss}}
-      |> NaiveDateTime.from_erl!()
+      |> NaiveDateTime.from_erl!(ms)
       |> DateTime.from_naive!("Etc/UTC")
 
     meta =
       metadata
+      |> Enum.map(&format/1)
       |> Enum.into(%{})
       |> Map.put(:timestamp, iso_timestamp)
-      |> Map.drop([:pid, :module, :function])
+      |> Map.drop([:domain, :mfa, :gl, :mfargs, :time, :error_logger, :report_cb])
 
-    [
-      "\n",
-      "[#{level}] #{message}",
-      "METADATA: #{Jason.encode!(meta, pretty: true)}"
-    ]
-    |> Enum.join("\n")
+    case Application.get_env(:tx, :env) do
+      :prod ->
+        Jason.encode!(meta)
+
+      _ ->
+        [
+          "\n",
+          "[#{level}] #{message}",
+          "METADATA: #{Jason.encode!(meta, pretty: true)}"
+        ]
+        |> Enum.join("\n")
+    end
   rescue
     exception ->
       [
@@ -31,4 +38,7 @@ defmodule Core.LogFormatter do
       ]
       |> Enum.join("\n")
   end
+
+  def format({key, value}) when is_pid(value) or is_tuple(value), do: {key, "#{inspect(value)}"}
+  def format(skip), do: skip
 end
