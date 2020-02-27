@@ -23,8 +23,8 @@ defmodule MQ.MixProject do
   # Run "mix help compile.app" to learn about applications.
   def application do
     [
-      extra_applications: [:lager, :logger, :timex]
-      # mod: {Bookings.Application, []}
+      extra_applications: [:lager, :logger, :timex],
+      mod: {RabbitMQ.Application, []}
     ]
   end
 
