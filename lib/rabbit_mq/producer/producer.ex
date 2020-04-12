@@ -2,10 +2,12 @@ defmodule RabbitMQ.Producer do
   defmacro __using__(opts) do
     quote do
       alias RabbitMQ.Producer
-      alias AMQP.Confirm
+
+      # alias AMQP.Confirm
 
       require Logger
 
+      @confirm_type unquote(Keyword.get(opts, :confirm_type, :async))
       @channel_type unquote(Keyword.get(opts, :channel_type, :confirm))
       @confirm_timeout unquote(Keyword.get(opts, :confirm_timeout, 250))
       @exchange unquote(Keyword.get(opts, :exchange, ""))
@@ -24,6 +26,7 @@ defmodule RabbitMQ.Producer do
       def child_spec(opts) do
         init_arg = %{
           connection_name: build_connection_name(),
+          confirm_type: @confirm_type,
           confirm_timeout: @confirm_timeout,
           channel_type: @channel_type,
           exchange: @exchange,
@@ -35,11 +38,24 @@ defmodule RabbitMQ.Producer do
         %{
           id: @this_module,
           start: {Producer, :start_link, [init_arg, opts]},
-          type: :worker,
+          type: :supervisor,
           restart: :permanent,
-          shutdown: 500
+          shutdown: :infinity
         }
       end
+
+      ###########################
+      # Useful Helper Functions #
+      ###########################
+
+      # defdelegate wait_for_confirms(channel), to: Confirm
+      # defdelegate wait_for_confirms(channel, timeout), to: Confirm
+      # defdelegate wait_for_confirms_or_die(channel), to: Confirm
+      # defdelegate wait_for_confirms_or_die(channel, timeout), to: Confirm
+
+      #####################
+      # Private Functions #
+      #####################
 
       defp publish(payload, routing_key, opts)
            when is_binary(payload) and is_binary(routing_key) and is_list(opts) do
@@ -47,19 +63,6 @@ defmodule RabbitMQ.Producer do
           GenServer.call(producer_pid, {:publish, @exchange, routing_key, payload, opts})
         end
       end
-
-      ###########################
-      # Useful Helper Functions #
-      ###########################
-
-      defdelegate wait_for_confirms(channel), to: Confirm
-      defdelegate wait_for_confirms(channel, timeout), to: Confirm
-      defdelegate wait_for_confirms_or_die(channel), to: Confirm
-      defdelegate wait_for_confirms_or_die(channel, timeout), to: Confirm
-
-      #####################
-      # Private Functions #
-      #####################
 
       defp build_connection_name do
         {:ok, hostname} = :inet.gethostname()
@@ -109,9 +112,9 @@ defmodule RabbitMQ.Producer do
 
     config =
       args
-      |> Map.take(~w(channel_type confirm_timeout)a)
+      |> Map.take(~w(channel_type confirm_type confirm_timeout)a)
       |> Map.put(:connection, connection)
-      |> struct(WorkerConfig)
+      |> (&struct(WorkerConfig, &1)).()
 
     workers =
       1..args.worker_count

@@ -4,8 +4,9 @@ defmodule RabbitMQ.Application do
   @impl true
   def start(_type, _args) do
     children = [
-      TransactionProducer,
-      TransactionConsumer
+      Topology,
+      CustomerProducer,
+      CustomerConsumer
     ]
 
     Supervisor.start_link(children, strategy: :one_for_one, name: RabbitMQ.Supervisor)

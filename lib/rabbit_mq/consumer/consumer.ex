@@ -37,9 +37,9 @@ defmodule RabbitMQ.Consumer do
         %{
           id: @this_module,
           start: {Consumer, :start_link, [init_arg, opts]},
-          type: :worker,
+          type: :supervisor,
           restart: :permanent,
-          shutdown: 500
+          shutdown: :infinity
         }
       end
 
@@ -63,7 +63,7 @@ defmodule RabbitMQ.Consumer do
     end
   end
 
-  alias AMQP.Connection
+  alias AMQP.{Channel, Connection, Queue}
   alias RabbitMQ.Consumer.Worker
   alias RabbitMQ.Consumer.Worker.Config, as: WorkerConfig
 
@@ -101,11 +101,14 @@ defmodule RabbitMQ.Consumer do
     # Each worker pool will maintain and monitor its own connection.
     {:ok, connection} = connect(args.connection_name)
 
+    {:ok, queue} = declare_queue_if_exclusive(args.queue, connection)
+
     config =
       args
       |> Map.take(~w(consume_cb prefetch_count queue)a)
+      |> Map.replace!(:queue, queue)
       |> Map.put(:connection, connection)
-      |> struct(WorkerConfig)
+      |> (&struct(WorkerConfig, &1)).()
 
     workers =
       1..args.worker_count
@@ -157,6 +160,32 @@ defmodule RabbitMQ.Consumer do
         :timer.sleep(@reconnect_interval_ms)
         connect(name)
     end
+  end
+
+  defp declare_queue_if_exclusive({exchange, routing_key, queue_name, opts}, connection)
+       when is_binary(queue_name) and is_list(opts),
+       do: declare_queue({exchange, routing_key, queue_name, opts}, connection)
+
+  defp declare_queue_if_exclusive({exchange, routing_key, queue_name}, connection)
+       when is_binary(queue_name),
+       do: declare_queue({exchange, routing_key, queue_name, []}, connection)
+
+  defp declare_queue_if_exclusive({exchange, routing_key, opts}, connection)
+       when is_list(opts),
+       do: declare_queue({exchange, routing_key, "", opts}, connection)
+
+  defp declare_queue_if_exclusive({exchange, routing_key}, connection),
+    do: declare_queue({exchange, routing_key, "", []}, connection)
+
+  defp declare_queue_if_exclusive(queue, _connection) when is_binary(queue), do: {:ok, queue}
+
+  defp declare_queue({exchange, routing_key, queue_name, opts}, connection) do
+    {:ok, channel} = Channel.open(connection)
+    opts = Keyword.put(opts, :exclusive, true)
+    {:ok, %{queue: queue_name}} = Queue.declare(channel, queue_name, opts)
+    :ok = Queue.bind(channel, queue_name, exchange, routing_key: routing_key)
+    :ok = Channel.close(channel)
+    {:ok, queue_name}
   end
 
   defp start_child(index, config) do
