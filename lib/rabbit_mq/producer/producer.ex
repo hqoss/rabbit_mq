@@ -112,7 +112,7 @@ defmodule RabbitMQ.Producer do
 
     config =
       args
-      |> Map.take(~w(channel_type confirm_type confirm_timeout)a)
+      |> Map.take(~w(confirm_type)a)
       |> Map.put(:connection, connection)
       |> (&struct(WorkerConfig, &1)).()
 

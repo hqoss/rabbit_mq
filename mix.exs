@@ -4,7 +4,7 @@ defmodule MQ.MixProject do
   def project do
     [
       app: :rabbit_mq_ex,
-      version: "1.0.0-alpha-1",
+      version: "0.0.0-alpha-0",
       elixir: "~> 1.10",
       start_permanent: Mix.env() == :prod,
       aliases: aliases(),
@@ -69,7 +69,9 @@ defmodule MQ.MixProject do
   end
 
   # Specifies which paths to compile per environment.
-  defp elixirc_paths(env) when env in [:test, :ci], do: ["lib", "test/__support"]
+  defp elixirc_paths(env) when env in [:test, :ci],
+    do: ["lib", "test/__support", "test/rabbit_mq"]
+
   defp elixirc_paths(_), do: ["lib"]
 
   # Aliases are shortcuts or tasks specific to the current project.
@@ -80,7 +82,7 @@ defmodule MQ.MixProject do
   # See the documentation for `Mix` for more info on aliases.
   defp aliases do
     [
-      test: ["rabbit.init", "test"]
+      # test: ["rabbit.init", "test"]
     ]
   end
 end

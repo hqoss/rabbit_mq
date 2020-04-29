@@ -8,12 +8,11 @@ defmodule RabbitMQ.Producer.Worker do
   @this_module __MODULE__
 
   defmodule Config do
-    @enforce_keys ~w(channel_type connection confirm_type confirm_timeout)a
+    @enforce_keys ~w(connection confirm_type)a
     defstruct @enforce_keys
   end
 
   defmodule State do
-    # TODO look into using ETS for outstanding_confirms
     @enforce_keys ~w(channel config outstanding_confirms)a
     defstruct @enforce_keys
   end
@@ -32,6 +31,10 @@ defmodule RabbitMQ.Producer.Worker do
 
   @impl true
   def init(%Config{confirm_type: :async, connection: connection} = config) do
+    # Notify when an exit happens, be it graceful or forceful.
+    # The corresponding channel and async handler will both be closed.
+    Process.flag(:trap_exit, true)
+
     with table <- :ets.new(:outstanding_confirms, [:protected, :ordered_set]),
          {:ok, channel} <- Channel.open(connection),
          :ok <- Confirm.select(channel),
@@ -40,60 +43,25 @@ defmodule RabbitMQ.Producer.Worker do
     end
   end
 
-  # @impl true
-  # def init(%Config{channel_type: :confirm, connection: connection} = config) do
-  #   with {:ok, channel} <- Channel.open(connection),
-  #        :ok <- Confirm.select(channel),
-  #        :ok <- Confirm.register_handler(channel, self()) do
-  #     {:ok, %State{config: config, channel: channel, unackd: []}}
-  #   end
-  # end
-
-  # @impl true
-  # def init(%Config{connection: connection} = config) do
-  #   with {:ok, channel} <- Channel.open(connection) do
-  #     {:ok, %State{config: config, channel: channel, unackd: []}}
-  #   end
-  # end
-
   @impl true
   def handle_call(
         {:publish, exchange, routing_key, data, opts},
         _from,
-        %State{
-          config: %Config{channel_type: :confirm, confirm_timeout: confirm_timeout},
-          channel: %Channel{} = channel,
-          outstanding_confirms: outstanding_confirms
-        } = state
+        %State{channel: %Channel{} = channel, outstanding_confirms: outstanding_confirms} = state
       ) do
     next_publish_seqno = Confirm.next_publish_seqno(channel)
 
+    # TODO what happens if confirms are not received within a given time limit?
+    # Are they nacked after a specific timeout? Is that configurable?
     case do_publish(channel, exchange, routing_key, data, opts) do
       :ok ->
         :ets.insert(outstanding_confirms, {next_publish_seqno, data})
-        # true = Confirm.wait_for_confirms_or_die(channel, confirm_timeout)
-        # TODO investigate notifications when confirms are not
-        # received within a specified time limit?
         {:reply, {:ok, next_publish_seqno}, state}
 
       error ->
         {:reply, error, state}
     end
   end
-
-  # @impl true
-  # def handle_call(
-  #       {:publish, exchange, routing_key, data, opts},
-  #       _from,
-  #       %State{
-  #         channel: %Channel{} = channel
-  #       } = state
-  #     ) do
-  #   case do_publish(channel, exchange, routing_key, data, opts) do
-  #     :ok -> {:reply, {:ok, channel}, state}
-  #     error -> {:reply, error, state}
-  #   end
-  # end
 
   @impl true
   def handle_info(
@@ -152,9 +120,10 @@ defmodule RabbitMQ.Producer.Worker do
   @impl true
   def terminate(reason, %State{channel: %Channel{} = channel} = state) do
     Logger.warn(
-      "Terminating Producer Worker due to #{inspect(reason)}. Closing dedicated channel."
+      "Terminating Producer Worker due to #{inspect(reason)}. Unregistering handler, closing dedicated channel."
     )
 
+    Confirm.unregister_handler(channel)
     Channel.close(channel)
 
     {:noreply, %{state | channel: nil}}
