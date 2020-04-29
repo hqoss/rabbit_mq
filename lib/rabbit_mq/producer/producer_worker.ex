@@ -7,13 +7,8 @@ defmodule RabbitMQ.Producer.Worker do
 
   @this_module __MODULE__
 
-  defmodule Config do
-    @enforce_keys ~w(connection confirm_type)a
-    defstruct @enforce_keys
-  end
-
   defmodule State do
-    @enforce_keys ~w(channel config outstanding_confirms)a
+    @enforce_keys ~w(channel outstanding_confirms)a
     defstruct @enforce_keys
   end
 
@@ -30,16 +25,15 @@ defmodule RabbitMQ.Producer.Worker do
   ######################
 
   @impl true
-  def init(%Config{confirm_type: :async, connection: connection} = config) do
+  def init(%{channel: channel, confirm_type: :async}) do
     # Notify when an exit happens, be it graceful or forceful.
     # The corresponding channel and async handler will both be closed.
     Process.flag(:trap_exit, true)
 
     with table <- :ets.new(:outstanding_confirms, [:protected, :ordered_set]),
-         {:ok, channel} <- Channel.open(connection),
          :ok <- Confirm.select(channel),
          :ok <- Confirm.register_handler(channel, self()) do
-      {:ok, %State{config: config, channel: channel, outstanding_confirms: table}}
+      {:ok, %State{channel: channel, outstanding_confirms: table}}
     end
   end
 
@@ -119,12 +113,9 @@ defmodule RabbitMQ.Producer.Worker do
 
   @impl true
   def terminate(reason, %State{channel: %Channel{} = channel} = state) do
-    Logger.warn(
-      "Terminating Producer Worker due to #{inspect(reason)}. Unregistering handler, closing dedicated channel."
-    )
+    Logger.warn("Terminating Producer Worker: #{inspect(reason)}. Unregistering handler.")
 
     Confirm.unregister_handler(channel)
-    Channel.close(channel)
 
     {:noreply, %{state | channel: nil}}
   end

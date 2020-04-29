@@ -23,16 +23,16 @@ defmodule RabbitMQTest.Producer.Worker do
       assert :ok = Connection.close(connection)
     end)
 
-    [channel: channel, connection: connection]
+    [channel: channel]
   end
 
-  setup %{channel: channel, connection: connection} do
+  setup %{channel: channel} do
     # Starts the Producer Worker.
     assert {:ok, pid} =
              start_supervised(
                {Worker,
-                %Worker.Config{
-                  connection: connection,
+                %{
+                  channel: channel,
                   confirm_type: :async
                 }}
              )
@@ -41,10 +41,10 @@ defmodule RabbitMQTest.Producer.Worker do
     {:ok, %{queue: queue}} = Queue.declare(channel, "", exclusive: true)
     :ok = Queue.bind(channel, queue, @exchange, routing_key: "#")
 
-    Basic.consume(channel, queue)
+    assert {:ok, consumer_tag} = Basic.consume(channel, queue)
 
     # This will always be the first message received by the process.
-    assert_receive({:basic_consume_ok, %{consumer_tag: consumer_tag}})
+    assert_receive({:basic_consume_ok, %{consumer_tag: ^consumer_tag}})
 
     on_exit(fn ->
       # This queue would have been deleted automatically when the connection
@@ -54,7 +54,12 @@ defmodule RabbitMQTest.Producer.Worker do
       assert {:ok, %{message_count: 0}} = Queue.delete(channel, queue)
     end)
 
-    [channel: channel, consumer_tag: consumer_tag, correlation_id: UUID.uuid4(), worker_pid: pid]
+    [
+      channel: channel,
+      consumer_tag: consumer_tag,
+      correlation_id: UUID.uuid4(),
+      producer_pid: pid
+    ]
   end
 
   describe "Producer Worker" do
@@ -62,7 +67,7 @@ defmodule RabbitMQTest.Producer.Worker do
       channel: channel,
       consumer_tag: consumer_tag,
       correlation_id: correlation_id,
-      worker_pid: pid
+      producer_pid: pid
     } do
       opts = [correlation_id: correlation_id]
 
@@ -91,7 +96,7 @@ defmodule RabbitMQTest.Producer.Worker do
     test "fails to publish if correlation_id is not provided in opts", %{
       channel: channel,
       consumer_tag: consumer_tag,
-      worker_pid: pid
+      producer_pid: pid
     } do
       assert {:error, :correlation_id_missing} =
                GenServer.call(pid, {:publish, @exchange, "routing_key", "data", []})
