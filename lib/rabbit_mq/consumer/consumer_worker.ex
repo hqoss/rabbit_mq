@@ -53,6 +53,24 @@ defmodule RabbitMQ.Consumer.Worker do
 
   @impl true
   def handle_info(
+        {:basic_cancel_ok, %{consumer_tag: consumer_tag}},
+        %State{} = state
+      ) do
+    Logger.info("Consumer #{consumer_tag} cancelled.")
+    {:noreply, state}
+  end
+
+  @impl true
+  def handle_info(
+        {:basic_cancel, %{consumer_tag: consumer_tag}},
+        %State{} = state
+      ) do
+    Logger.warn("Consumer #{consumer_tag} cancelled by broker.")
+    {:noreply, state}
+  end
+
+  @impl true
+  def handle_info(
         {:basic_deliver, payload, meta},
         %State{channel: %Channel{} = channel, config: %Config{consume_cb: consume_cb}} = state
       ) do
@@ -63,7 +81,7 @@ defmodule RabbitMQ.Consumer.Worker do
   @impl true
   def terminate(reason, %State{channel: %Channel{} = channel, consumer_tag: consumer_tag} = state) do
     Logger.warn(
-      "Terminating Consumer Worker due to #{inspect(reason)}. Closing dedicated channel."
+      "Terminating Consumer Worker: #{inspect(reason)}. Unregistering consumer, closing dedicated channel."
     )
 
     Basic.cancel(channel, consumer_tag)

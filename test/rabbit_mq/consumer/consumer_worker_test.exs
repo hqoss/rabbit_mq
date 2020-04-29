@@ -1,4 +1,4 @@
-defmodule RabbitMQTest.Consumer.Worker do
+defmodule RabbitMQTest.Consumer do
   alias AMQP.{Basic, Channel, Connection, Exchange, Queue}
   alias RabbitMQ.Consumer.Worker
 
