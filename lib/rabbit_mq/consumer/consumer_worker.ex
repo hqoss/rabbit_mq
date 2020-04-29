@@ -13,7 +13,7 @@ defmodule RabbitMQ.Consumer.Worker do
   end
 
   defmodule State do
-    @enforce_keys ~w(channel config)a
+    @enforce_keys ~w(channel config consumer_tag)a
     defstruct @enforce_keys
   end
 
@@ -31,10 +31,14 @@ defmodule RabbitMQ.Consumer.Worker do
 
   @impl true
   def init(%Config{connection: connection, queue: queue, prefetch_count: prefetch_count} = config) do
+    # Notify when an exit happens, be it graceful or forceful.
+    # The corresponding channel and the consumer will both be closed.
+    Process.flag(:trap_exit, true)
+
     with {:ok, channel} <- Channel.open(connection),
          :ok <- Basic.qos(channel, prefetch_count: prefetch_count),
-         {:ok, _consumer_tag} <- Basic.consume(channel, queue) do
-      {:ok, %State{channel: channel, config: config}}
+         {:ok, consumer_tag} <- Basic.consume(channel, queue) do
+      {:ok, %State{channel: channel, config: config, consumer_tag: consumer_tag}}
     end
   end
 
@@ -57,11 +61,12 @@ defmodule RabbitMQ.Consumer.Worker do
   end
 
   @impl true
-  def terminate(reason, %State{channel: %Channel{} = channel} = state) do
+  def terminate(reason, %State{channel: %Channel{} = channel, consumer_tag: consumer_tag} = state) do
     Logger.warn(
       "Terminating Consumer Worker due to #{inspect(reason)}. Closing dedicated channel."
     )
 
+    Basic.cancel(channel, consumer_tag)
     Channel.close(channel)
 
     {:noreply, %{state | channel: nil}}
