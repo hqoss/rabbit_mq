@@ -5,10 +5,6 @@ config :logger, :console,
   format: {Core.LogFormatter, :format},
   metadata: :all
 
-config :lager,
-  error_logger_redirect: false,
-  handlers: [level: :critical]
-
 config :rabbit_mq_ex,
   amqp_url: "amqp://guest:guest@localhost:5672",
   heartbeat_interval_sec: 15,

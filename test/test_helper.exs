@@ -1,2 +1,2 @@
-:ok = MQ.Support.TestConsumerRegistry.init()
+# :ok = MQ.Support.TestConsumerRegistry.init()
 ExUnit.start()
