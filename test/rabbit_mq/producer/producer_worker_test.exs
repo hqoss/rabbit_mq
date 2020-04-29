@@ -1,4 +1,4 @@
-defmodule RabbitMQTest.Consumer do
+defmodule RabbitMQTest.Producer.Worker do
   alias AMQP.{Basic, Channel, Connection, Exchange, Queue}
   alias RabbitMQ.Producer.Worker
 
@@ -49,7 +49,8 @@ defmodule RabbitMQTest.Consumer do
     on_exit(fn ->
       # This queue would have been deleted automatically when the connection
       # gets closed, however we manually delete it to avoid any naming conflicts
-      # in between tests, no matter how unlikely.
+      # in between tests, no matter how unlikely. Also, we ensure there are no
+      # messages left hanging in the queue.
       assert {:ok, %{message_count: 0}} = Queue.delete(channel, queue)
     end)
 
