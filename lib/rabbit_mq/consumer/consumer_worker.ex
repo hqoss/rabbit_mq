@@ -1,5 +1,5 @@
 defmodule RabbitMQ.Consumer.Worker do
-  alias AMQP.{Basic, Channel}
+  alias AMQP.{Basic, Channel, Connection}
 
   require Logger
 
@@ -94,10 +94,11 @@ defmodule RabbitMQ.Consumer.Worker do
   def terminate(reason, %State{channel: %Channel{} = channel, consumer_tag: consumer_tag} = state) do
     Logger.warn("Terminating Consumer Worker: #{inspect(reason)}. Unregistering consumer.")
 
-    Basic.cancel(channel, consumer_tag)
-
-    # The channel itself is managed outside of this worker and as such
-    # will be closed and re-established with by the parent process.
+    if Process.alive?(channel.pid) do
+      # The channel itself is managed outside of this worker and as such
+      # will be closed and re-established with by the parent process.
+      Basic.cancel(channel, consumer_tag)
+    end
 
     {:noreply, %{state | channel: nil}}
   end
