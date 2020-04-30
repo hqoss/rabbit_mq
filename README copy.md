@@ -1,8 +1,17 @@
-# 🐇 rabbit_mq_ex
+# 🐇 Rabbit MQ Elixir
 
 The missing RabbitMQ client for Elixir.
 
-## 
+## Why use `rabbit_mq_ex`
+
+* Built-in topology configuration
+* Built-in 0 configuration Producer and Consumer workers (pooling)
+* API-design 
+* Sensible defaults
+
+... as opposed to `amqp`?   
+
+* `amqp` is a relatively low level implementation
 
 ## Core concepts and architecture
 
@@ -13,4 +22,3 @@ The missing RabbitMQ client for Elixir.
 * There are sensible defaults
 * There are imposed requirements
 * There is a application-scoped limit of channels per connection
-

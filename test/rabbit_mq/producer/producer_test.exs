@@ -20,7 +20,7 @@ defmodule RabbitMQTest.Producer do
       assert %{
                id: TestProducer,
                restart: :permanent,
-               shutdown: :infinity,
+               shutdown: :brutal_kill,
                start:
                  {RabbitMQ.Producer, :start_link,
                   [
