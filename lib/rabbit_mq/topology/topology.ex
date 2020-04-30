@@ -1,4 +1,68 @@
 defmodule RabbitMQ.Topology do
+  @moduledoc """
+  A convenience module that can be used to establish the (RabbitMQ) network topology.
+
+  First, create a module that `use`s `RabbitMQ.Topology` to define exchanges and their
+  corresponding bindings as shown below.
+
+  ⚠️ Please note that exclusive queues cannot be set up this way. You may need to consult
+  the `RabbitMQ.Consumer` module for details on how exclusive queues can be set up and used.
+
+      defmodule Topology do
+        use RabbitMQ.Topology,
+          exchanges: [
+            {"customer", :topic,
+              [
+                {"customer.created", "customer/customer.created", durable: true},
+                {"customer.updated", "customer/customer.updated", durable: true},
+                {"#", "customer/#"}
+              ], durable: true}
+          ]
+      end
+
+  Then, simply add this module to your supervision tree, *before* any Consumers or Producers
+  that rely on the exchanges configured within it start.
+
+  ⚠️ Please note that the `Topology` module will terminate gracefully as soon as the
+  network is configured.
+
+      children = [
+        Topology,
+        MyConsumer,
+        MyProducer,
+        # ...and more
+      ]
+
+      Supervisor.start_link(children, strategy: :one_for_one)
+  """
+
+  @doc """
+  The macro to `use` this module.
+
+  Available options:
+
+      exchanges: [
+        {
+          # Exchange name
+          "customer",
+          # Exchange type, only topic is supported at the moment
+          :topic,
+          # List of bindings
+          [
+            {
+              # Routing/binding key
+              "#",
+              # Queue name
+              "customer/#",
+              # Queue opts (optional)
+              durable: true
+            }
+          ],
+          # Exchange opts
+          durable: true
+        }
+      ]
+  """
   defmacro __using__(opts) do
     quote do
       alias AMQP.{Connection, Channel, Exchange, Queue}
@@ -19,7 +83,7 @@ defmodule RabbitMQ.Topology do
       # Public API #
       ##############
 
-      def start_link(_) do
+      def start_link(_args) do
         GenServer.start_link(@this_module, nil, name: @this_module)
       end
 
@@ -28,7 +92,7 @@ defmodule RabbitMQ.Topology do
       ######################
 
       @impl true
-      def init(_) do
+      def init(_arg) do
         with {:ok, connection} <- Connection.open(@amqp_url),
              {:ok, channel} <- Channel.open(connection) do
           state = Enum.flat_map(@exchanges, &declare_exchange(&1, channel))
