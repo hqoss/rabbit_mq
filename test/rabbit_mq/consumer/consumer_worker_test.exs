@@ -23,10 +23,10 @@ defmodule RabbitMQTest.Consumer do
       assert :ok = Connection.close(connection)
     end)
 
-    [channel: channel, connection: connection]
+    [channel: channel]
   end
 
-  setup %{channel: channel, connection: connection} do
+  setup %{channel: channel} do
     # Declare an exclusive queue and bind it to the "test" exchange.
     {:ok, %{queue: queue}} = Queue.declare(channel, "", exclusive: true)
     :ok = Queue.bind(channel, queue, @exchange, routing_key: "#")
@@ -38,8 +38,8 @@ defmodule RabbitMQTest.Consumer do
     assert {:ok, pid} =
              start_supervised(
                {Worker,
-                %Worker.Config{
-                  connection: connection,
+                %{
+                  channel: channel,
                   consume_cb: fn payload, meta, channel ->
                     send(test_pid, {payload, meta})
                     Basic.ack(channel, meta.delivery_tag)
