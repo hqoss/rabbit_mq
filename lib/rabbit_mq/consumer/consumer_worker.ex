@@ -1,5 +1,5 @@
 defmodule RabbitMQ.Consumer.Worker do
-  alias AMQP.{Basic, Channel, Connection}
+  alias AMQP.{Basic, Channel}
 
   require Logger
 
@@ -73,16 +73,7 @@ defmodule RabbitMQ.Consumer.Worker do
         {:basic_deliver, payload, meta},
         %State{channel: %Channel{} = channel, consume_cb: consume_cb} = state
       ) do
-    spawn(fn ->
-      # case consume_cb.(payload, meta, channel) do
-      # :ok -> Basic.ack(channel, meta.delivery_tag)
-      # {:error, :retry} -> Basic.nack(channel, meta.delivery_tag)
-      # {:error, _} -> Basic.nack(channel, meta.delivery_tag)
-      # end
-
-      consume_cb.(payload, meta, channel)
-    end)
-
+    spawn(fn -> consume_cb.(payload, meta, channel) end)
     {:noreply, state}
   end
 

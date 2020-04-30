@@ -15,10 +15,11 @@ defmodule Core.LogFormatter do
       |> Enum.map(&format/1)
       |> Enum.into(%{})
       |> Map.put(:timestamp, iso_timestamp)
-      |> Map.drop([:domain, :mfa, :gl, :mfargs, :time, :error_logger, :report_cb])
 
-    case Application.get_env(:tx, :env) do
-      :prod ->
+    # |> Map.drop([:domain, :mfa, :gl, :mfargs, :time, :error_logger, :report_cb])
+
+    case Application.get_env(:rabbit_mq_ex, :env) do
+      :dev ->
         Jason.encode!(meta)
 
       _ ->

@@ -61,7 +61,7 @@ defmodule RabbitMQTest.Consumer do
       assert %{
                id: TestConsumer,
                restart: :permanent,
-               shutdown: :infinity,
+               shutdown: :brutal_kill,
                start:
                  {RabbitMQ.Consumer, :start_link,
                   [

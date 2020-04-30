@@ -15,23 +15,21 @@ defmodule MQ.MixProject do
       ],
       docs: docs(),
       package: package(),
-      elixirc_paths: elixirc_paths(Mix.env()),
-      dialyzer: [plt_add_apps: [:mix]]
+      elixirc_paths: elixirc_paths(Mix.env())
     ]
   end
 
   # Run "mix help compile.app" to learn about applications.
   def application do
     [
-      extra_applications: [:lager, :logger, :timex],
-      mod: {RabbitMQ.Application, []}
+      extra_applications: [:lager, :logger, :amqp]
     ]
   end
 
   defp docs do
     [
-      filter_prefix: "MQ",
-      main: "MQ.Supervisor",
+      filter_prefix: "RabbitMQ",
+      # main: "RabbitMQ.Supervisor",
       nest_modules_by_prefix: [MQ.Consumer, MQ.Topology, MQ.Support]
     ]
   end
@@ -39,15 +37,15 @@ defmodule MQ.MixProject do
   defp package do
     [
       # These are the default files included in the package
-      files: ~w(lib/core lib/mq test/__support .formatter.exs mix.exs README*),
+      files: ~w(lib/core lib/rabbit_mq .formatter.exs mix.exs README*),
       licenses: ["Apache 2.0"],
-      links: %{"GitHub" => "https://github.com/qworks-io/rabbit_mq_ex.git"},
+      links: %{"GitHub" => "https://github.com/hqoss/rabbit_mq"},
       maintainers: ["Slavo Vojacek"]
     ]
   end
 
   defp description do
-    "rabbit_mq_ex contains a set of tools that make working with RabbitMQ consume/produce pipelines easier"
+    "🐇 The missing Elixir client for RabbitMQ"
   end
 
   # Run "mix help deps" to learn about dependencies.
@@ -55,9 +53,6 @@ defmodule MQ.MixProject do
     [
       {:amqp, "~> 1.4"},
       {:jason, "~> 1.1"},
-      {:nanoid, "~> 2.0.2"},
-      {:poolboy, "~> 1.5.1"},
-      {:timex, "~> 3.6"},
       {:uuid, "~> 1.1"},
       # Dev/Test-only deps
       {:ex_check, ">= 0.0.0", only: :dev, runtime: false},
@@ -69,9 +64,7 @@ defmodule MQ.MixProject do
   end
 
   # Specifies which paths to compile per environment.
-  defp elixirc_paths(env) when env in [:test, :ci],
-    do: ["lib", "test/__support", "test/rabbit_mq"]
-
+  defp elixirc_paths(env) when env in [:test, :ci], do: ["lib", "test/rabbit_mq"]
   defp elixirc_paths(_), do: ["lib"]
 
   # Aliases are shortcuts or tasks specific to the current project.
