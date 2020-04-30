@@ -117,6 +117,9 @@ defmodule RabbitMQ.Producer.Worker do
 
     Confirm.unregister_handler(channel)
 
+    # The channel itself is managed outside of this worker and as such
+    # will be closed and re-established with by the parent process.
+
     {:noreply, %{state | channel: nil}}
   end
 
