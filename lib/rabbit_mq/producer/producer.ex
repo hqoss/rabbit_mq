@@ -1,4 +1,42 @@
 defmodule RabbitMQ.Producer do
+  @moduledoc """
+  This module can be `use`d to establish a pool of Producer workers.
+
+  ## Example usage
+
+  The approach we took allows you to design consistent, API-like Producer modules.
+
+  To define your first Producer:
+
+      defmodule CustomerProducer do
+        use RabbitMQ.Producer, exchange: "customer", worker_count: 3
+
+        def customer_updated(updated_customer) do
+          opts = [
+            content_type: "application/json",
+            correlation_id: UUID.uuid4(),
+            mandatory: true
+          ]
+
+          publish(Jason.encode!(updated_customer), "customer.updated", opts)
+        end
+      end
+
+  `publish/3` is a private function that becomes available once you `use RabbitMQ.Producer`.
+
+  It has the following signature;
+
+      publish(payload :: String.t(), routing_key :: String.t(), opts :: keyword()) :: :ok | {:error, :correlation_id_missing}
+
+  To see which options can be passed as `opts`, please consult https://hexdocs.pm/amqp/AMQP.Basic.html#publish/5.
+
+  ⚠️ Please note that `correlation_id` is always required and failing to provide it will result in an exception.
+
+  ## Defaults
+
+  TODO
+  """
+
   defmacro __using__(opts) do
     quote do
       alias RabbitMQ.Producer
@@ -80,6 +118,8 @@ defmodule RabbitMQ.Producer do
   @this_module __MODULE__
 
   defmodule State do
+    @moduledoc false
+
     @enforce_keys [:connection, :workers, :worker_count]
     defstruct connection: nil, workers: [], worker_count: 0, worker_offset: 0
   end
@@ -88,6 +128,12 @@ defmodule RabbitMQ.Producer do
   # Public API #
   ##############
 
+  @doc """
+  Starts the process via `GenServer.start_link/3`.
+
+  Only used by the module's corresponding `child_spec`.
+  """
+  @spec start_link(map(), keyword()) :: GenServer.on_start()
   def start_link(config, opts) do
     GenServer.start_link(@this_module, config, opts)
   end
