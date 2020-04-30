@@ -13,7 +13,17 @@ defmodule RabbitMQ.Consumer do
       @this_module __MODULE__
 
       if @worker_count > @max_workers do
-        raise "Cannot start #{@worker_count} workers, max is #{@max_workers}!"
+        raise """
+        Cannot start #{@worker_count} workers, maximum channels per connection is #{@max_workers}.
+
+        You can configure this value as shown below;
+
+          config :rabbit_mq_ex, max_channels_per_connection: 16
+
+        As a rule of thumb, most applications can use a single digit number of channels per connection.
+
+        For details, please consult the official RabbitMQ docs: https://www.rabbitmq.com/channels.html#channel-max.
+        """
       end
 
       # TODO check if there is a type for meta in amqp
@@ -24,8 +34,7 @@ defmodule RabbitMQ.Consumer do
       ##############
 
       def child_spec(opts) do
-        init_arg = %{
-          connection_name: build_connection_name(),
+        config = %{
           consume_cb: &consume/3,
           prefetch_count: @prefetch_count,
           queue: @queue,
@@ -36,7 +45,7 @@ defmodule RabbitMQ.Consumer do
 
         %{
           id: @this_module,
-          start: {Consumer, :start_link, [init_arg, opts]},
+          start: {Consumer, :start_link, [config, opts]},
           type: :supervisor,
           restart: :permanent,
           shutdown: :infinity
@@ -50,22 +59,11 @@ defmodule RabbitMQ.Consumer do
       defdelegate ack(channel, tag), to: Basic
       defdelegate nack(channel, tag), to: Basic
       defdelegate reject(channel, tag), to: Basic
-
-      #####################
-      # Private Functions #
-      #####################
-
-      defp build_connection_name do
-        {:ok, hostname} = :inet.gethostname()
-        node = Node.self()
-        "#{@this_module}/#{hostname}/#{node}"
-      end
     end
   end
 
   alias AMQP.{Channel, Connection, Queue}
   alias RabbitMQ.Consumer.Worker
-  alias RabbitMQ.Consumer.Worker.Config, as: WorkerConfig
 
   require Logger
 
@@ -95,27 +93,22 @@ defmodule RabbitMQ.Consumer do
   ######################
 
   @impl true
-  def init(args) do
+  def init(config) do
     Process.flag(:trap_exit, true)
 
     # Each worker pool will maintain and monitor its own connection.
-    {:ok, connection} = connect(args.connection_name)
+    {:ok, connection} = connect()
 
-    {:ok, queue} = declare_queue_if_exclusive(args.queue, connection)
+    {:ok, queue} = declare_queue_if_exclusive(config.queue, connection)
 
-    config =
-      args
-      |> Map.take(~w(consume_cb prefetch_count queue)a)
-      |> Map.replace!(:queue, queue)
-      |> Map.put(:connection, connection)
-      |> (&struct(WorkerConfig, &1)).()
+    config = Map.replace!(config, :queue, queue)
 
     workers =
-      1..args.worker_count
+      1..config.worker_count
       |> Enum.with_index()
-      |> Enum.map(fn {_, index} -> start_child(index, config) end)
+      |> Enum.map(fn {_, index} -> start_worker(index, config, connection) end)
 
-    {:ok, %State{connection: connection, workers: workers, worker_count: args.worker_count}}
+    {:ok, %State{connection: connection, workers: workers, worker_count: config.worker_count}}
   end
 
   @impl true
@@ -130,25 +123,38 @@ defmodule RabbitMQ.Consumer do
   @impl true
   def handle_info(
         {:EXIT, from, reason},
-        %State{workers: workers} = state
+        %State{connection: connection, workers: workers} = state
       ) do
     Logger.warn("Consumer worker process terminated due to #{inspect(reason)}. Restarting.")
 
     {index, _old_pid, config} = Enum.find(workers, fn {_index, pid, _config} -> pid === from end)
-    updated_workers = List.replace_at(workers, index, start_child(index, config))
+
+    # Clean up, new channel will be established in `start_worker/3`.
+    :ok = Channel.close(config.channel)
+
+    updated_workers = List.replace_at(workers, index, start_worker(index, config, connection))
 
     {:noreply, %{state | workers: updated_workers}}
+  end
+
+  @impl true
+  def terminate(reason, %State{connection: %Connection{} = connection} = state) do
+    Logger.warn("Terminating Consumer pool: #{inspect(reason)}. Closing connection.")
+
+    Connection.close(connection)
+
+    {:noreply, %{state | connection: nil}}
   end
 
   #####################
   # Private Functions #
   #####################
 
-  defp connect(name) do
+  defp connect() do
     opts = [channel_max: @max_channels, heartbeat: @heartbeat_interval_sec]
 
     @amqp_url
-    |> Connection.open(name, opts)
+    |> Connection.open(opts)
     |> case do
       {:ok, connection} ->
         # Get notifications when the connection goes down
@@ -158,7 +164,7 @@ defmodule RabbitMQ.Consumer do
       {:error, error} ->
         Logger.error("Failed to connect to broker due to #{inspect(error)}. Retrying...")
         :timer.sleep(@reconnect_interval_ms)
-        connect(name)
+        connect()
     end
   end
 
@@ -188,8 +194,16 @@ defmodule RabbitMQ.Consumer do
     {:ok, queue_name}
   end
 
-  defp start_child(index, config) do
+  defp start_worker(index, config, connection) do
+    {:ok, channel} = Channel.open(connection)
+
+    config =
+      config
+      |> Map.put(:channel, channel)
+      |> Map.take(~w(channel consume_cb prefetch_count queue)a)
+
     {:ok, pid} = Worker.start_link(config)
+
     {index, pid, config}
   end
 end

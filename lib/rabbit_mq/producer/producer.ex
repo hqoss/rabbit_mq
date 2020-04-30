@@ -19,10 +19,9 @@ defmodule RabbitMQ.Producer do
 
           config :rabbit_mq_ex, max_channels_per_connection: 16
 
-        For details, please consult the official RabbitMQ docs
-        at https://www.rabbitmq.com/channels.html#channel-max.
+        As a rule of thumb, most applications can use a single digit number of channels per connection.
 
-        > As a rule of thumb, most applications can use a single digit number of channels per connection.
+        For details, please consult the official RabbitMQ docs: https://www.rabbitmq.com/channels.html#channel-max.
         """
       end
 
