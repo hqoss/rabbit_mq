@@ -111,6 +111,10 @@ defmodule RabbitMQ.Producer.Worker do
     {:noreply, state}
   end
 
+  @doc """
+  Invoked when the server is about to exit. It should do any cleanup required.
+  See https://hexdocs.pm/elixir/GenServer.html#c:terminate/2 for more details.
+  """
   @impl true
   def terminate(reason, %State{channel: %Channel{} = channel} = state) do
     Logger.warn("Terminating Producer Worker: #{inspect(reason)}. Unregistering handler.")
