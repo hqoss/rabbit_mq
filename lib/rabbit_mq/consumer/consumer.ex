@@ -137,11 +137,18 @@ defmodule RabbitMQ.Consumer do
     {:noreply, %{state | workers: updated_workers}}
   end
 
+  @doc """
+  Invoked when the server is about to exit. It should do any cleanup required.
+  See https://hexdocs.pm/elixir/GenServer.html#c:terminate/2 for more details.
+  """
   @impl true
-  def terminate(reason, %State{connection: %Connection{} = connection} = state) do
-    Logger.warn("Terminating Consumer pool: #{inspect(reason)}. Closing connection.")
+  def terminate(reason, %State{connection: connection} = state) do
+    Logger.warn("Terminating Producer pool: #{inspect(reason)}. Closing connection.")
 
-    Connection.close(connection)
+    case connection do
+      %Connection{} -> Connection.close(connection)
+      nil -> :ok
+    end
 
     {:noreply, %{state | connection: nil}}
   end
