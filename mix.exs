@@ -30,7 +30,7 @@ defmodule MQ.MixProject do
     [
       filter_prefix: "RabbitMQ",
       # main: "RabbitMQ.Supervisor",
-      nest_modules_by_prefix: [MQ.Consumer, MQ.Topology, MQ.Support]
+      nest_modules_by_prefix: [RabbitMQ.Consumer, RabbitMQ.Producer]
     ]
   end
 
