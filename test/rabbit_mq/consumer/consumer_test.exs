@@ -1,40 +1,81 @@
-defmodule RabbitMQTest.Producer do
-  alias AMQP.{Channel, Connection}
-  alias RabbitMQ.Producer
-  alias RabbitMQ.Producer.Worker.State, as: ProducerWorkerState
+defmodule RabbitMQTest.Consumer do
+  alias AMQP.{Channel, Connection, Exchange, Queue}
+  alias RabbitMQ.Consumer
+  alias RabbitMQ.Consumer.Worker.State, as: ConsumerWorkerState
 
   use ExUnit.Case
 
-  defmodule TestProducer do
+  @amqp_url Application.get_env(:rabbit_mq_ex, :amqp_url)
+
+  defmodule TestConsumer do
     @exchange "#{__MODULE__}"
+    @queue "#{@exchange}/temporary"
 
-    use Producer, exchange: @exchange, worker_count: 2
+    use RabbitMQ.Consumer, worker_count: 2, queue: @queue
 
+    def consume(_payload, meta, channel), do: ack(channel, meta.delivery_tag)
     def exchange, do: @exchange
+    def queue, do: @queue
+  end
+
+  setup_all do
+    exchange = TestConsumer.exchange()
+    queue = TestConsumer.queue()
+
+    assert {:ok, connection} = Connection.open(@amqp_url)
+    assert {:ok, channel} = Channel.open(connection)
+
+    # Ensure we have a disposable exchange set up.
+    assert :ok = Exchange.declare(channel, exchange, :topic, durable: false)
+
+    # Declare a queue and bind it to the above exchange exchange.
+    {:ok, %{queue: queue}} = Queue.declare(channel, queue)
+    :ok = Queue.bind(channel, queue, exchange, routing_key: "#")
+
+    # Clean up after all tests have ran.
+    on_exit(fn ->
+      # Ensure there are no messages left hanging in the queue as it gets deleted.
+      assert {:ok, %{message_count: 0}} = Queue.delete(channel, queue)
+
+      assert :ok = Exchange.delete(channel, exchange)
+      assert :ok = Channel.close(channel)
+      assert :ok = Connection.close(connection)
+    end)
+
+    [channel: channel, queue: queue]
+  end
+
+  setup %{channel: channel, queue: queue} do
+    on_exit(fn ->
+      # Ensure there are no messages in the queue as the next test is about to start.
+      assert true = Queue.empty?(channel, queue)
+    end)
+
+    :ok
   end
 
   describe "#{__MODULE__}" do
     test "defines correctly configured child specification" do
-      exchange = TestProducer.exchange()
+      queue = TestConsumer.queue()
 
       assert %{
-               id: TestProducer,
+               id: TestConsumer,
                restart: :permanent,
                shutdown: :infinity,
                start:
-                 {RabbitMQ.Producer, :start_link,
+                 {RabbitMQ.Consumer, :start_link,
                   [
-                    %{confirm_type: :async, exchange: ^exchange, worker_count: 2},
-                    [name: TestProducer, opt: :extra_opt]
+                    %{consume_cb: _, prefetch_count: 10, queue: ^queue, worker_count: 2},
+                    [name: TestConsumer, opt: :extra_opt]
                   ]},
                type: :supervisor
-             } = TestProducer.child_spec(opt: :extra_opt)
+             } = TestConsumer.child_spec(opt: :extra_opt)
     end
 
     test "establishes a connection and starts the defined number of workers" do
-      assert {:ok, pid} = start_supervised(TestProducer)
+      assert {:ok, pid} = start_supervised(TestConsumer)
 
-      assert %Producer.State{
+      assert %Consumer.State{
                connection: %Connection{} = connection,
                worker_count: 2,
                workers: [worker_1, worker_2]
@@ -49,9 +90,9 @@ defmodule RabbitMQTest.Producer do
     end
 
     test "workers are assigned their own channels from a shared connection" do
-      assert {:ok, pid} = start_supervised(TestProducer)
+      assert {:ok, pid} = start_supervised(TestConsumer)
 
-      assert %Producer.State{
+      assert %Consumer.State{
                connection: %Connection{} = connection,
                worker_count: 2,
                workers: [
@@ -60,11 +101,11 @@ defmodule RabbitMQTest.Producer do
                ]
              } = :sys.get_state(pid)
 
-      assert %ProducerWorkerState{
+      assert %ConsumerWorkerState{
                channel: %Channel{} = worker_1_channel
              } = :sys.get_state(worker_1_pid)
 
-      assert %ProducerWorkerState{
+      assert %ConsumerWorkerState{
                channel: %Channel{} = worker_2_channel
              } = :sys.get_state(worker_2_pid)
 
@@ -77,9 +118,9 @@ defmodule RabbitMQTest.Producer do
     end
 
     test "if a worker dies, it is re-started with a new channel, and its original channel is closed" do
-      assert {:ok, pid} = start_supervised(TestProducer)
+      assert {:ok, pid} = start_supervised(TestConsumer)
 
-      assert %Producer.State{
+      assert %Consumer.State{
                connection: connection,
                worker_count: 2,
                workers: [
@@ -93,7 +134,7 @@ defmodule RabbitMQTest.Producer do
       # Wait until a new worker is spawned.
       :timer.sleep(25)
 
-      assert %Producer.State{
+      assert %Consumer.State{
                connection: ^connection,
                worker_count: 2,
                workers: [
@@ -105,16 +146,16 @@ defmodule RabbitMQTest.Producer do
       assert worker_2_pid !== worker_3_pid
     end
 
-    test "if a connection dies, the entire Producer pool re-starts" do
+    test "if a connection dies, the entire Consumer pool re-starts" do
       children = [
-        TestProducer
+        TestConsumer
       ]
 
-      assert {:ok, pid} = Supervisor.start_link(children, strategy: :one_for_one, max_restarts: 1)
+      assert {:ok, pid} = Supervisor.start_link(children, strategy: :one_for_one)
 
-      producer = Process.whereis(TestProducer)
+      producer = Process.whereis(TestConsumer)
 
-      assert %Producer.State{
+      assert %Consumer.State{
                connection: connection,
                workers: workers
              } = :sys.get_state(producer)
@@ -124,11 +165,11 @@ defmodule RabbitMQTest.Producer do
       # Wait until the child is re-started.
       :timer.sleep(25)
 
-      new_producer = Process.whereis(TestProducer)
+      new_producer = Process.whereis(TestConsumer)
 
       assert producer !== new_producer
 
-      assert %Producer.State{
+      assert %Consumer.State{
                connection: new_connection,
                workers: new_workers
              } = :sys.get_state(new_producer)

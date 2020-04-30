@@ -119,10 +119,11 @@ defmodule RabbitMQ.Producer.Worker do
   def terminate(reason, %State{channel: %Channel{} = channel} = state) do
     Logger.warn("Terminating Producer Worker: #{inspect(reason)}. Unregistering handler.")
 
-    Confirm.unregister_handler(channel)
-
-    # The channel itself is managed outside of this worker and as such
-    # will be closed and re-established with by the parent process.
+    if Process.alive?(channel.pid) do
+      # The channel itself is managed outside of this worker and as such
+      # will be closed and re-established with by the parent process.
+      Confirm.unregister_handler(channel)
+    end
 
     {:noreply, %{state | channel: nil}}
   end

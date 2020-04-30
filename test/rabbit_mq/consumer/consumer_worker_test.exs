@@ -1,4 +1,4 @@
-defmodule RabbitMQTest.Consumer do
+defmodule RabbitMQTest.Consumer.Worker do
   alias AMQP.{Basic, Channel, Connection, Exchange, Queue}
   alias RabbitMQ.Consumer.Worker
 
@@ -16,21 +16,27 @@ defmodule RabbitMQTest.Consumer do
     # Ensure we have a disposable exchange set up.
     assert :ok = Exchange.declare(channel, @exchange, :topic, durable: false)
 
+    # Declare an exclusive queue and bind it to the above exchange.
+    {:ok, %{queue: queue}} = Queue.declare(channel, "", exclusive: true)
+    :ok = Queue.bind(channel, queue, @exchange, routing_key: "#")
+
+    # Clean up after all tests have ran.
     on_exit(fn ->
-      # Clean up after all tests have ran.
+      # This queue would have been deleted automatically when the connection
+      # gets closed, however we manually delete it to avoid any naming conflicts
+      # in between tests, no matter how unlikely. Also, we ensure there are no
+      # messages left hanging in the queue.
+      assert {:ok, %{message_count: 0}} = Queue.delete(channel, queue)
+
       assert :ok = Exchange.delete(channel, @exchange)
       assert :ok = Channel.close(channel)
       assert :ok = Connection.close(connection)
     end)
 
-    [channel: channel]
+    [channel: channel, queue: queue]
   end
 
-  setup %{channel: channel} do
-    # Declare an exclusive queue and bind it to the "test" exchange.
-    {:ok, %{queue: queue}} = Queue.declare(channel, "", exclusive: true)
-    :ok = Queue.bind(channel, queue, @exchange, routing_key: "#")
-
+  setup %{channel: channel, queue: queue} do
     # Capture current process pid to send a message to when `consume_cb` is called.
     test_pid = self()
 
@@ -50,17 +56,14 @@ defmodule RabbitMQTest.Consumer do
              )
 
     on_exit(fn ->
-      # This queue would have been deleted automatically when the connection
-      # gets closed, however we manually delete it to avoid any naming conflicts
-      # in between tests, no matter how unlikely. Also, we ensure there are no
-      # messages left hanging in the queue.
-      assert {:ok, %{message_count: 0}} = Queue.delete(channel, queue)
+      # Ensure there are no messages in the queue as the next test is about to start.
+      assert true = Queue.empty?(channel, queue)
     end)
 
     [channel: channel, correlation_id: UUID.uuid4()]
   end
 
-  describe "Consumer Worker" do
+  describe "#{__MODULE__}" do
     test "is capable of consuming messages", %{channel: channel, correlation_id: correlation_id} do
       opts = [correlation_id: correlation_id]
 

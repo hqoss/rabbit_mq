@@ -43,12 +43,18 @@ defmodule RabbitMQ.Consumer do
 
         opts = Keyword.put_new(opts, :name, @this_module)
 
+        # Read more about child specification:
+        # https://hexdocs.pm/elixir/Supervisor.html#module-child-specification
         %{
           id: @this_module,
           start: {Consumer, :start_link, [config, opts]},
           type: :supervisor,
+          # Read more about restart values:
+          # https://hexdocs.pm/elixir/Supervisor.html#module-restart-values-restart
           restart: :permanent,
-          shutdown: :infinity
+          # Read more about shutdown values:
+          # https://hexdocs.pm/elixir/Supervisor.html#module-shutdown-values-shutdown
+          shutdown: :brutal_kill
         }
       end
 
