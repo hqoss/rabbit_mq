@@ -1,7 +1,6 @@
 import Config
 
 config :logger, :console,
-  format: {Core.LogFormatter, :format},
   level: :debug,
   metadata: :all
 

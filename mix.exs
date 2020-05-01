@@ -29,8 +29,29 @@ defmodule MQ.MixProject do
   defp docs do
     [
       filter_prefix: "RabbitMQ",
-      # main: "RabbitMQ.Supervisor",
+      main: "overview",
+      extra_section: "GUIDES",
+      extras: extras(),
+      groups_for_extras: groups_for_extras(),
       nest_modules_by_prefix: [RabbitMQ.Consumer, RabbitMQ.Producer]
+    ]
+  end
+
+  defp extras do
+    [
+      # Introduction
+      "guides/introduction/overview.md",
+      "guides/introduction/configuration.md"
+
+      # Configuration
+      # "guides/configuration/overview.md"
+    ]
+  end
+
+  defp groups_for_extras do
+    [
+      Introduction: ~r/guides\/introduction\//
+      # Configuration: ~r/guides\/configuration\//
     ]
   end
 
@@ -52,7 +73,6 @@ defmodule MQ.MixProject do
   defp deps do
     [
       {:amqp, "~> 1.4"},
-      {:jason, "~> 1.1"},
       {:uuid, "~> 1.1"},
       # Dev/Test-only deps
       {:ex_check, ">= 0.0.0", only: :dev, runtime: false},

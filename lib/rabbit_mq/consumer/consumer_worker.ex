@@ -1,4 +1,10 @@
 defmodule RabbitMQ.Consumer.Worker do
+  @moduledoc """
+  The single Consumer worker used to consume messages from a queue.
+
+  Calls `consume/3` defined in the parent module for each message consumed.
+  """
+
   alias AMQP.{Basic, Channel}
 
   require Logger
@@ -8,6 +14,17 @@ defmodule RabbitMQ.Consumer.Worker do
   @this_module __MODULE__
 
   defmodule State do
+    @moduledoc """
+    The internal state held in the `RabbitMQ.Consumer.Worker` server.
+
+    * `:channel`;
+        holds the dedicated `AMQP.Channel`.
+    * `:consume_cb`;
+        the callback invoked for each message consumed.
+    * `:consumer_tag`;
+        the unique consumer identifier.
+    """
+
     @enforce_keys ~w(channel consume_cb consumer_tag)a
     defstruct @enforce_keys
   end

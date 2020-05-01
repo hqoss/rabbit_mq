@@ -65,7 +65,7 @@ defmodule RabbitMQ.Topology do
   """
   defmacro __using__(opts) do
     quote do
-      alias AMQP.{Connection, Channel, Exchange, Queue}
+      alias AMQP.{Channel, Connection, Exchange, Queue}
 
       require Logger
 
