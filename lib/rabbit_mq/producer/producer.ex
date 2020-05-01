@@ -4,37 +4,76 @@ defmodule RabbitMQ.Producer do
 
   ## Example usage
 
-  The approach we took allows you to design consistent, API-like Producer modules.
+  `rabbit_mq` allows you to design consistent, SDK-like Producers.
 
-  To define your first Producer:
+  First, define your (ideally domain-specific) Producer:
 
       defmodule CustomerProducer do
         use RabbitMQ.Producer, exchange: "customer", worker_count: 3
 
         def customer_updated(updated_customer) do
+          # See https://hexdocs.pm/amqp/AMQP.Basic.html#publish/5 for all available options.
           opts = [
             content_type: "application/json",
             correlation_id: UUID.uuid4(),
             mandatory: true
           ]
 
-          publish(Jason.encode!(updated_customer), "customer.updated", opts)
+          payload = Jason.encode!(updated_customer)
+
+          publish(payload, "customer.updated", opts)
         end
       end
 
-  `publish/3` is a private function that becomes available once you `use RabbitMQ.Producer`.
+  Then, start as normal under your existing supervision tree:
 
-  It has the following signature;
+      children = [
+        Topology,
+        CustomerProducer,
+        # ...and more
+      ]
 
-      publish(payload :: String.t(), routing_key :: String.t(), opts :: keyword()) :: :ok | {:error, :correlation_id_missing}
+      Supervisor.start_link(children, strategy: :one_for_one)
 
-  To see which options can be passed as `opts`, please consult https://hexdocs.pm/amqp/AMQP.Basic.html#publish/5.
+  Finally, call the exposed methods from your application:
+
+      {:ok, %Customer{} = customer} = Customer.update(customer_id, patch)
+      CustomerProducer.customer_updated(customer)
+
+  ## Configuration
+
+  When you `use RabbitMQ.Producer`, a few things happen:
+
+  1. The module turns into a `GenServer`,
+  2. The server starts _and supervises_ the desired number of workers (see configuration further below),
+  3. `publish/3` becomes available in your module.
+
+  `publish/3` is a _private_ function with the following signature;
+
+      @type payload :: String.t()
+      @type routing_key :: String.t()
+      @type opts :: keyword()
+      @type result :: :ok | {:error, :correlation_id_missing}
+
+      publish(payload(), routing_key(), opts()) :: result()
+
+  To see which options can be passed as `opts` to `publish/3`, please consult https://hexdocs.pm/amqp/AMQP.Basic.html#publish/5.
 
   ⚠️ Please note that `correlation_id` is always required and failing to provide it will result in an exception.
 
-  ## Defaults
+  The following options can be used with `RabbitMQ.Producer`;
 
-  TODO
+  * `:confirm_type`;
+      publisher acknowledgement mode.
+      Only `:async` is supported for now. Please consult https://www.rabbitmq.com/confirms.html#publisher-confirms for more details.
+      Defaults to `:async`.
+  * `:exchange`;
+      the name of the exchange onto which the producer workers will publish.
+      Defaults to `""`.
+  * `:worker_count`;
+      number of workers to be spawned.
+      Cannot be greater than `:max_channels_per_connection` set in config.
+      Defaults to `3`.
   """
 
   defmacro __using__(opts) do
@@ -118,7 +157,21 @@ defmodule RabbitMQ.Producer do
   @this_module __MODULE__
 
   defmodule State do
-    @moduledoc false
+    @moduledoc """
+    The internal state held in the `RabbitMQ.Producer` server.
+
+    * `:connection`;
+        holds the dedicated `AMQP.Connection`.
+    * `:workers`;
+        the children started under the server. The server acts as a `Supervisor`.
+        Enables round-robin command dispatch.
+    * `:worker_count`;
+        a simple worker count tracker.
+        Used in round-robin command dispatch logic.
+    * `:worker_offset`;
+        a simple tracker to determine which worker to call next.
+        Used in round-robin command dispatch logic.
+    """
 
     @enforce_keys [:connection, :workers, :worker_count]
     defstruct connection: nil, workers: [], worker_count: 0, worker_offset: 0
@@ -129,9 +182,9 @@ defmodule RabbitMQ.Producer do
   ##############
 
   @doc """
-  Starts the process via `GenServer.start_link/3`.
+  Starts this module as a process via `GenServer.start_link/3`.
 
-  Only used by the module's corresponding `child_spec`.
+  Only used by the module's `child_spec`.
   """
   @spec start_link(map(), keyword()) :: GenServer.on_start()
   def start_link(config, opts) do
