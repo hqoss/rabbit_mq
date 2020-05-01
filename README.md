@@ -1,3 +1,6 @@
+![Elixir CI](https://github.com/hqoss/rabbit_mq/workflows/Elixir%20CI/badge.svg)
+[![Codacy Badge](https://api.codacy.com/project/badge/Grade/d8c50db737fe4b9bae614e2d06710443)](https://www.codacy.com/gh/hqoss/rabbit_mq?utm_source=github.com&amp;utm_medium=referral&amp;utm_content=hqoss/rabbit_mq&amp;utm_campaign=Badge_Grade)
+
 # Overview
 
 `rabbit_mq` is an opinionated RabbitMQ client to help _you_ build balanced and consistent Consumers and Producers.
