@@ -1,4 +1,105 @@
 defmodule RabbitMQ.Consumer do
+  @moduledoc """
+  This module can be `use`d to establish a pool of Consumer workers.
+
+  ## Example usage
+
+  `rabbit_mq` allows you to design consistent, SDK-like Consumers.
+
+  ℹ️ The following example assumes that the `"customer/customer.updated"` queue already exists.
+
+  First, define your (ideally domain-specific) Consumer:
+
+      defmodule CustomerConsumer do
+        use RabbitMQ.Consumer, queue: "customer/customer.updated", worker_count: 3
+
+        require Logger
+
+        def consume(payload, meta, channel) do
+          Logger.info(payload)
+          ack(channel, meta.delivery_tag)
+        end
+      end
+
+  Then, start as normal under your existing supervision tree:
+
+      children = [
+        Topology,
+        CustomerConsumer,
+        CustomerProducer,
+        # ...and more
+      ]
+
+      Supervisor.start_link(children, strategy: :one_for_one)
+
+  As messages are published onto the `"customer/customer.updated"` queue, `consume/3` (in `CustomerConsumer`)
+  will be invoked.
+
+  ⚠️ Please note that automatic message acknowledgement is **disabled** in `rabbit_mq`, therefore
+  it's _your_ responsibility to ensure messages are `ack`'d or `nack`'d.
+
+  ℹ️ Please consult the
+  [Consumer Acknowledgement Modes and Data Safety Considerations](https://www.rabbitmq.com/confirms.html#acknowledgement-modes)
+  for more details.
+
+  ## Configuration
+
+  The following options can be used with `RabbitMQ.Consumer`;
+
+  * `:prefetch_count`;
+      limits the number of unacknowledged messages on a channel.
+      Please consult the
+      [Consumer Prefetch](https://www.rabbitmq.com/consumer-prefetch.html)
+      section for more details.
+      Defaults to `10`.
+  * `:queue`;
+      the name of the queue from which the Consumer should start consuming.
+      **For exclusive queues, please see the Exclusive Queues section further below.**
+      Defaults to `""`.
+  * `:worker_count`;
+      number of workers to be spawned.
+      Cannot be greater than `:max_channels_per_connection` set in config.
+      Defaults to `3`.
+
+  When you `use RabbitMQ.Consumer`, a few things happen;
+
+  1. The module turns into a `GenServer`.
+  2. The server starts _and supervises_ the desired number of workers.
+  3. `consume/3` is passed as a callback to each worker when `start_link/1` is called.
+  4. _If_ an exclusive queue is requested, it will be declared and bound to the Consumer.
+  5. Each worker starts consuming from the queue provided, calls `consume/3` for each message consumed.
+  6. `ack/2`, `nack/2`, and `reject/2` become automatically available.
+
+  `consume/3` needs to be defined with the following signature;
+
+      @type payload :: String.t()
+      @type meta :: map()
+      @type channel :: AMQP.Channel.t()
+      @type result :: :ok | {:error, :retry} | {:error, term()}
+
+      consume(payload(), meta(), channel()) :: result()
+
+  ### Exclusive queues
+
+  If you want to consume from an exclusive queue, simply use one of the following tuples in the configuration;
+
+  * `{exchange, routing_key}`
+  * `{exchange, routing_key, opts}`
+  * `{exchange, routing_key, queue_name}`
+  * `{exchange, routing_key, queue_name, opts}`
+
+  ℹ️ At a minimum, the `exchange` and the `routing_key` are required.
+
+      defmodule CustomerConsumer do
+        use RabbitMQ.Consumer, queue: {"customer", "customer.*"}, worker_count: 3
+
+        # Define `consume/3` as normal.
+      end
+
+  This will ensure that the queue is declared and correctly bound before the Consumer workers start
+  consuming messages off it.
+  """
+
   defmacro __using__(opts) do
     quote do
       alias AMQP.{Basic, Channel}
@@ -26,7 +127,6 @@ defmodule RabbitMQ.Consumer do
         """
       end
 
-      # TODO check if there is a type for meta in amqp
       @callback consume(String.t(), map(), Channel.t()) :: term()
 
       ##############
@@ -75,21 +175,35 @@ defmodule RabbitMQ.Consumer do
 
   use GenServer
 
-  @amqp_url Application.get_env(:rabbit_mq_ex, :amqp_url)
-  @heartbeat_interval_sec Application.get_env(:rabbit_mq_ex, :heartbeat_interval_sec)
-  @reconnect_interval_ms Application.get_env(:rabbit_mq_ex, :reconnect_interval_ms)
-  @max_channels Application.get_env(:rabbit_mq_ex, :max_channels_per_connection)
+  @amqp_url Application.fetch_env!(:rabbit_mq_ex, :amqp_url)
+  @heartbeat_interval_sec Application.fetch_env!(:rabbit_mq_ex, :heartbeat_interval_sec)
+  @reconnect_interval_ms Application.fetch_env!(:rabbit_mq_ex, :reconnect_interval_ms)
+  @max_channels Application.fetch_env!(:rabbit_mq_ex, :max_channels_per_connection)
   @this_module __MODULE__
 
   defmodule State do
-    @enforce_keys [:connection, :workers, :worker_count]
-    defstruct connection: nil, workers: [], worker_count: 0, worker_offset: 0
+    @moduledoc """
+    The internal state held in the `RabbitMQ.Consumer` server.
+
+    * `:connection`;
+        holds the dedicated `AMQP.Connection`.
+    * `:workers`;
+        the children started under the server. The server acts as a `Supervisor`.
+    """
+
+    @enforce_keys [:connection, :workers]
+    defstruct connection: nil, workers: []
   end
 
   ##############
   # Public API #
   ##############
 
+  @doc """
+  Starts this module as a process via `GenServer.start_link/3`.
+
+  Only used by the module's `child_spec`.
+  """
   def start_link(init_arg, opts) do
     GenServer.start_link(@this_module, init_arg, opts)
   end
@@ -114,7 +228,7 @@ defmodule RabbitMQ.Consumer do
       |> Enum.with_index()
       |> Enum.map(fn {_, index} -> start_worker(index, config, connection) end)
 
-    {:ok, %State{connection: connection, workers: workers, worker_count: config.worker_count}}
+    {:ok, %State{connection: connection, workers: workers}}
   end
 
   @impl true
@@ -163,7 +277,7 @@ defmodule RabbitMQ.Consumer do
   # Private Functions #
   #####################
 
-  defp connect() do
+  defp connect do
     opts = [channel_max: @max_channels, heartbeat: @heartbeat_interval_sec]
 
     @amqp_url

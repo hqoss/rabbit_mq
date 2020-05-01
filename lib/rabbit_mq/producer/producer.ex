@@ -6,12 +6,14 @@ defmodule RabbitMQ.Producer do
 
   `rabbit_mq` allows you to design consistent, SDK-like Producers.
 
+  ℹ️ The following example assumes that the `"customer"` exchange already exists.
+
   First, define your (ideally domain-specific) Producer:
 
       defmodule CustomerProducer do
         use RabbitMQ.Producer, exchange: "customer", worker_count: 3
 
-        def customer_updated(updated_customer) do
+        def customer_updated(updated_customer) when is_map(updated_customer) do
           # See https://hexdocs.pm/amqp/AMQP.Basic.html#publish/5 for all available options.
           opts = [
             content_type: "application/json",
@@ -29,6 +31,7 @@ defmodule RabbitMQ.Producer do
 
       children = [
         Topology,
+        CustomerConsumer,
         CustomerProducer,
         # ...and more
       ]
@@ -37,15 +40,30 @@ defmodule RabbitMQ.Producer do
 
   Finally, call the exposed methods from your application:
 
-      {:ok, %Customer{} = customer} = Customer.update(customer_id, patch)
-      CustomerProducer.customer_updated(customer)
+      CustomerProducer.customer_updated(updated_customer)
 
   ## Configuration
 
-  When you `use RabbitMQ.Producer`, a few things happen:
+  The following options can be used with `RabbitMQ.Producer`;
 
-  1. The module turns into a `GenServer`,
-  2. The server starts _and supervises_ the desired number of workers (see configuration further below),
+  * `:confirm_type`;
+      publisher acknowledgement mode.
+      Only `:async` is supported for now. Please consult the
+      [Publisher Confirms](https://www.rabbitmq.com/confirms.html#publisher-confirms)
+      section for more details.
+      Defaults to `:async`.
+  * `:exchange`;
+      the name of the exchange onto which the producer workers will publish.
+      Defaults to `""`.
+  * `:worker_count`;
+      number of workers to be spawned.
+      Cannot be greater than `:max_channels_per_connection` set in config.
+      Defaults to `3`.
+
+  When you `use RabbitMQ.Consumer`, a few things happen;
+
+  1. The module turns into a `GenServer`.
+  2. The server starts _and supervises_ the desired number of workers.
   3. `publish/3` becomes available in your module.
 
   `publish/3` is a _private_ function with the following signature;
@@ -57,23 +75,9 @@ defmodule RabbitMQ.Producer do
 
       publish(payload(), routing_key(), opts()) :: result()
 
-  To see which options can be passed as `opts` to `publish/3`, please consult https://hexdocs.pm/amqp/AMQP.Basic.html#publish/5.
-
   ⚠️ Please note that `correlation_id` is always required and failing to provide it will result in an exception.
 
-  The following options can be used with `RabbitMQ.Producer`;
-
-  * `:confirm_type`;
-      publisher acknowledgement mode.
-      Only `:async` is supported for now. Please consult https://www.rabbitmq.com/confirms.html#publisher-confirms for more details.
-      Defaults to `:async`.
-  * `:exchange`;
-      the name of the exchange onto which the producer workers will publish.
-      Defaults to `""`.
-  * `:worker_count`;
-      number of workers to be spawned.
-      Cannot be greater than `:max_channels_per_connection` set in config.
-      Defaults to `3`.
+  ℹ️ To see which options can be passed as `opts` to `publish/3`, visit https://hexdocs.pm/amqp/AMQP.Basic.html#publish/5.
   """
 
   defmacro __using__(opts) do
@@ -150,10 +154,10 @@ defmodule RabbitMQ.Producer do
 
   use GenServer
 
-  @amqp_url Application.get_env(:rabbit_mq_ex, :amqp_url)
-  @heartbeat_interval_sec Application.get_env(:rabbit_mq_ex, :heartbeat_interval_sec)
-  @reconnect_interval_ms Application.get_env(:rabbit_mq_ex, :reconnect_interval_ms)
-  @max_channels Application.get_env(:rabbit_mq_ex, :max_channels_per_connection)
+  @amqp_url Application.fetch_env!(:rabbit_mq_ex, :amqp_url)
+  @heartbeat_interval_sec Application.fetch_env!(:rabbit_mq_ex, :heartbeat_interval_sec)
+  @reconnect_interval_ms Application.fetch_env!(:rabbit_mq_ex, :reconnect_interval_ms)
+  @max_channels Application.fetch_env!(:rabbit_mq_ex, :max_channels_per_connection)
   @this_module __MODULE__
 
   defmodule State do
@@ -268,7 +272,7 @@ defmodule RabbitMQ.Producer do
   # Private Functions #
   #####################
 
-  defp connect() do
+  defp connect do
     opts = [channel_max: @max_channels, heartbeat: @heartbeat_interval_sec]
 
     @amqp_url

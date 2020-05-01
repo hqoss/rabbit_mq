@@ -77,7 +77,6 @@ defmodule RabbitMQTest.Consumer do
 
       assert %Consumer.State{
                connection: %Connection{} = connection,
-               worker_count: 2,
                workers: [worker_1, worker_2]
              } = :sys.get_state(pid)
 
@@ -94,7 +93,6 @@ defmodule RabbitMQTest.Consumer do
 
       assert %Consumer.State{
                connection: %Connection{} = connection,
-               worker_count: 2,
                workers: [
                  {0, worker_1_pid, _worker_1_config},
                  {1, worker_2_pid, _worker_2_config}
@@ -122,7 +120,6 @@ defmodule RabbitMQTest.Consumer do
 
       assert %Consumer.State{
                connection: connection,
-               worker_count: 2,
                workers: [
                  {0, _worker_1_pid, _worker_1_config},
                  {1, worker_2_pid, _worker_2_config}
@@ -136,7 +133,6 @@ defmodule RabbitMQTest.Consumer do
 
       assert %Consumer.State{
                connection: ^connection,
-               worker_count: 2,
                workers: [
                  {0, _worker_1_pid, _worker_1_config},
                  {1, worker_3_pid, _worker_3_config}
