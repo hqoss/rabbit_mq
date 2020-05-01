@@ -4,8 +4,8 @@ defmodule MQ.MixProject do
   def project do
     [
       app: :rabbit_mq,
-      version: "0.0.0-alpha-2",
-      elixir: "~> 1.10",
+      version: "0.0.0-alpha-3",
+      elixir: "~> 1.9",
       start_permanent: Mix.env() == :prod,
       aliases: aliases(),
       deps: deps(),

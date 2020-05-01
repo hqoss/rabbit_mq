@@ -12,92 +12,6 @@ The following modules are provided;
 * [`RabbitMQ.Consumer`](https://hexdocs.pm/rabbit_mq/RabbitMQ.Consumer.html)
 * [`RabbitMQ.Producer`](https://hexdocs.pm/rabbit_mq/RabbitMQ.Producer.html)
 
-## Example usage
-
-1. Define network topology
-2. Define Producers
-3. Define Consumers
-4. Supervise
-5. Start producing and consuming messages
-
-### Define network topology
-
-```elixir
-defmodule Topology do
-  use RabbitMQ.Topology,
-    exchanges: [
-      {"customer", :topic,
-        [
-          {"customer.created", "customer/customer.created", durable: true},
-          {"customer.updated", "customer/customer.updated", durable: true},
-          {"#", "customer/#"}
-        ], durable: true}
-    ]
-end
-```
-
-### Define Producers
-
-```elixir
-defmodule CustomerProducer do
-  use RabbitMQ.Producer, exchange: "customer", worker_count: 3
-
-  def customer_updated(updated_customer) when is_map(updated_customer) do
-    opts = [
-      content_type: "application/json",
-      correlation_id: UUID.uuid4(),
-      mandatory: true
-    ]
-
-    payload = Jason.encode!(updated_customer)
-
-    publish(payload, "customer.updated", opts)
-  end
-end
-```
-
-### Define Consumers
-
-```elixir
-defmodule CustomerConsumer do
-  use RabbitMQ.Consumer, queue: "customer/customer.updated", worker_count: 3
-
-  require Logger
-
-  def consume(payload, meta, channel) do
-    Logger.info(payload)
-    ack(channel, meta.delivery_tag)
-  end
-end
-```
-
-### Supervise
-
-Start as normal under your existing supervision tree.
-
-⚠️ Please note that the `Topology` module will terminate gracefully as soon as the network is configured.
-
-```elixir
-children = [
-  Topology,
-  CustomerConsumer,
-  CustomerProducer,
-  # ...and more
-]
-
-Supervisor.start_link(children, strategy: :one_for_one)
-```
-
-### Start producing and consuming messages
-
-To publish, simply call your pre-defined methods.
-
-```elixir
-CustomerProducer.customer_updated(updated_customer)
-```
-
-To consume, use the `consume/3` implementation.
-
 ## Balanced performance and reliability
 
 The RabbitMQ modules are pre-configured with sensible defaults and follow design principles that improve and delicately balance both performance _and_ reliability.
@@ -119,3 +33,53 @@ This has been possible through
 * [Production Checklist](https://www.rabbitmq.com/production-checklist.html)
 * [RabbitMQ Best Practices](https://www.cloudamqp.com/blog/2017-12-29-part1-rabbitmq-best-practice.html)
 * [RabbitMQ Best Practice for High Performance (High Throughput)](https://www.cloudamqp.com/blog/2018-01-08-part2-rabbitmq-best-practice-for-high-performance.html)
+
+## Consistency
+
+ℹ️ This section is currently being completed. Thank you for your understanding and patience.
+
+The RabbitMQ modules are designed to help you build consistent, SDK-like Consumers and Producers.
+
+```elixir
+defmodule CustomerProducer do
+  use RabbitMQ.Producer, exchange: "customer"
+
+  @doc """
+  Publishes an event routed via "customer.created".
+  """
+  def customer_created(customer_id) do
+    opts = [
+      content_type: "application/json",
+      correlation_id: UUID.uuid4(),
+      mandatory: true
+    ]
+
+    payload = Jason.encode!(%{version: "1.0.0", customer_id: customer_id})
+
+    publish(payload, "customer.created", opts)
+  end
+
+  @doc """
+  Publishes an event routed via "customer.created".
+  """
+  def customer_updated(customer_data) do
+    opts = [
+      content_type: "application/json",
+      correlation_id: UUID.uuid4(),
+      mandatory: true
+    ]
+
+    payload = Jason.encode!(%{version: "1.0.0", customer_data: customer_data})
+
+    publish(payload, "customer.created", opts)
+  end
+end
+```
+
+## Example usage
+
+## TODO
+
+A quick and dirty tech-debt tracker, used in conjunction with Issues.
+
+* [ ] Add support for notifying the parent producer when a publisher `nack` occurs.
