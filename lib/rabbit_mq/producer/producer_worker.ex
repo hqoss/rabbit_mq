@@ -1,4 +1,8 @@
 defmodule RabbitMQ.Producer.Worker do
+  @moduledoc """
+  The single Producer worker used to publish messages onto an exchange.
+  """
+
   alias AMQP.{Basic, Channel, Confirm}
 
   require Logger
@@ -8,6 +12,15 @@ defmodule RabbitMQ.Producer.Worker do
   @this_module __MODULE__
 
   defmodule State do
+    @moduledoc """
+    The internal state held in the `RabbitMQ.Producer.Worker` server.
+
+    * `:channel`;
+        holds the dedicated `AMQP.Channel`.
+    * `:outstanding_confirms`;
+        holds the reference to the protected ets table used to track outstanding Publisher `ack` or `nack` confirms.
+    """
+
     @enforce_keys ~w(channel outstanding_confirms)a
     defstruct @enforce_keys
   end
@@ -16,6 +29,12 @@ defmodule RabbitMQ.Producer.Worker do
   # Public API #
   ##############
 
+  @doc """
+  Starts this module as a process via `GenServer.start_link/2`.
+
+  Only used by the parent module which acts as a `Supervisor`.
+  """
+  @spec start_link(map()) :: GenServer.on_start()
   def start_link(config) do
     GenServer.start_link(@this_module, config)
   end
@@ -62,7 +81,7 @@ defmodule RabbitMQ.Producer.Worker do
         {:basic_ack, seq_number, false},
         %State{outstanding_confirms: outstanding_confirms} = state
       ) do
-    Logger.info("Received ACK of #{seq_number}.")
+    Logger.debug("Received ACK of #{seq_number}.")
 
     true = :ets.delete(outstanding_confirms, seq_number)
 
@@ -74,7 +93,7 @@ defmodule RabbitMQ.Producer.Worker do
         {:basic_ack, seq_number, true},
         %State{outstanding_confirms: outstanding_confirms} = state
       ) do
-    Logger.info("Received ACKs up to #{seq_number}.")
+    Logger.debug("Received ACKs up to #{seq_number}.")
 
     # ms = :ets.fun2ms(fn {index, _data} when index <= seq_number -> true end)
     ms = [{{:"$1", :"$2"}, [{:"=<", :"$1", seq_number}], [true]}]
@@ -101,7 +120,7 @@ defmodule RabbitMQ.Producer.Worker do
         {:basic_nack, seq_number, true},
         %State{outstanding_confirms: outstanding_confirms} = state
       ) do
-    Logger.info("Received NACKs up to #{seq_number}.")
+    Logger.warn("Received NACKs up to #{seq_number}.")
 
     # TODO also notify another process!
     # ms = :ets.fun2ms(fn {index, _data} when index <= seq_number -> true end)

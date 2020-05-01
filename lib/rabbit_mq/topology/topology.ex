@@ -5,7 +5,7 @@ defmodule RabbitMQ.Topology do
   First, create a module that `use`s `RabbitMQ.Topology` to define exchanges and their
   corresponding bindings as shown below.
 
-  ⚠️ Please note that exclusive queues cannot be set up this way. You may need to consult
+  ⚠️ Please note that exclusive queues cannot be configured here. You may need to consult
   the `RabbitMQ.Consumer` module for details on how exclusive queues can be set up and used.
 
       defmodule Topology do
