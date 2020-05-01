@@ -32,7 +32,7 @@ This has been possible through
 
 ### Performance
 
-⚠️ This section is currently being completed. Thank you for your understanding and patience.
+ℹ️ This section is currently being completed. Thank you for your understanding and patience.
 
 * Talk about async mode for publisher confirms
 * Talk about connection and channel pooling
@@ -40,14 +40,14 @@ This has been possible through
 
 ### Reliability
 
-⚠️ This section is currently being completed. Thank you for your understanding and patience.
+ℹ️ This section is currently being completed. Thank you for your understanding and patience.
 
 * Talk about connection and channel pooling
 * Talk about workers
 
 ## Consistency
 
-⚠️ This section is currently being completed. Thank you for your understanding and patience.
+ℹ️ This section is currently being completed. Thank you for your understanding and patience.
 
 The RabbitMQ modules are designed to help you build consistent, SDK-like Consumers and Producers.
 
@@ -89,7 +89,11 @@ end
 
 ## Application design
 
-⚠️ This section is currently being completed. Thank you for your understanding and patience.
+ℹ️ This section is currently being completed. Thank you for your understanding and patience.
 
 * Talk about connection and channel pooling and management, supervision, workers
 * This is a near-0 dependency library, built solely on top of `amqp`.
+
+## Configuration
+
+Please consult the [Configuration guide](configuration) for details.
