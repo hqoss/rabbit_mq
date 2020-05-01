@@ -71,7 +71,7 @@ defmodule MQ.MixProject do
   end
 
   defp description do
-    "🐇 The missing Elixir client for RabbitMQ"
+    "🐇 Opinionated RabbitMQ client to help you build balanced and consistent Consumers and Producers"
   end
 
   # Run "mix help deps" to learn about dependencies.
