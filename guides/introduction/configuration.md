@@ -8,7 +8,7 @@ The following options must be configured.
 * `max_channels_per_connection`; **required**, maximum number of channels per connection. Also determines the maximum number of workers per Producer/Consumer module.
 
 ```elixir
-config :rabbit_mq_ex,
+config :rabbit_mq,
   amqp_url: "amqp://guest:guest@localhost:5672",
   heartbeat_interval_sec: 60,
   reconnect_interval_ms: 2500,

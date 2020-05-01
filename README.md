@@ -8,9 +8,9 @@ The full documentation is published on [hex](https://hexdocs.pm/rabbit_mq/).
 
 The following modules are provided;
 
-* `RabbitMQ.Topology`
-* `RabbitMQ.Consumer`
-* `RabbitMQ.Producer`
+* [`RabbitMQ.Topology`](https://hexdocs.pm/rabbit_mq/RabbitMQ.Topology.html)
+* [`RabbitMQ.Consumer`](https://hexdocs.pm/rabbit_mq/RabbitMQ.Consumer.html)
+* [`RabbitMQ.Producer`](https://hexdocs.pm/rabbit_mq/RabbitMQ.Producer.html)
 
 ## Example usage
 
@@ -43,7 +43,6 @@ defmodule CustomerProducer do
   use RabbitMQ.Producer, exchange: "customer", worker_count: 3
 
   def customer_updated(updated_customer) when is_map(updated_customer) do
-    # See https://hexdocs.pm/amqp/AMQP.Basic.html#publish/5 for all available options.
     opts = [
       content_type: "application/json",
       correlation_id: UUID.uuid4(),
@@ -97,7 +96,7 @@ To publish, simply call your pre-defined methods.
 CustomerProducer.customer_updated(updated_customer)
 ```
 
-To consume, update the `consume/3` implementation.
+To consume, use the `consume/3` implementation.
 
 ## Balanced performance and reliability
 

@@ -23,4 +23,4 @@ erl_crash.dump
 *.ez
 
 # Ignore package tarball (built via "mix hex.build").
-rabbit_mq_ex-*.tar
+rabbit_mq-*.tar

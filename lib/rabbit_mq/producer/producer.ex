@@ -89,7 +89,7 @@ defmodule RabbitMQ.Producer do
       @confirm_type unquote(Keyword.get(opts, :confirm_type, :async))
       @exchange unquote(Keyword.get(opts, :exchange, ""))
       @worker_count unquote(Keyword.get(opts, :worker_count, 3))
-      @max_workers Application.get_env(:rabbit_mq_ex, :max_channels_per_connection, 3)
+      @max_workers Application.get_env(:rabbit_mq, :max_channels_per_connection, 3)
       @this_module __MODULE__
 
       if @worker_count > @max_workers do
@@ -98,7 +98,7 @@ defmodule RabbitMQ.Producer do
 
         You can configure this value as shown below;
 
-          config :rabbit_mq_ex, max_channels_per_connection: 16
+          config :rabbit_mq, max_channels_per_connection: 16
 
         As a rule of thumb, most applications can use a single digit number of channels per connection.
 
@@ -154,10 +154,10 @@ defmodule RabbitMQ.Producer do
 
   use GenServer
 
-  @amqp_url Application.fetch_env!(:rabbit_mq_ex, :amqp_url)
-  @heartbeat_interval_sec Application.fetch_env!(:rabbit_mq_ex, :heartbeat_interval_sec)
-  @reconnect_interval_ms Application.fetch_env!(:rabbit_mq_ex, :reconnect_interval_ms)
-  @max_channels Application.fetch_env!(:rabbit_mq_ex, :max_channels_per_connection)
+  @amqp_url Application.fetch_env!(:rabbit_mq, :amqp_url)
+  @heartbeat_interval_sec Application.fetch_env!(:rabbit_mq, :heartbeat_interval_sec)
+  @reconnect_interval_ms Application.fetch_env!(:rabbit_mq, :reconnect_interval_ms)
+  @max_channels Application.fetch_env!(:rabbit_mq, :max_channels_per_connection)
   @this_module __MODULE__
 
   defmodule State do

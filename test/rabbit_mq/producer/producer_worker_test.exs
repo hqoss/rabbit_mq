@@ -6,7 +6,7 @@ defmodule RabbitMQTest.Producer.Worker do
 
   use ExUnit.Case
 
-  @amqp_url Application.get_env(:rabbit_mq_ex, :amqp_url)
+  @amqp_url Application.get_env(:rabbit_mq, :amqp_url)
   @exchange "#{__MODULE__}"
 
   setup_all do
