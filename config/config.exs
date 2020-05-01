@@ -6,7 +6,7 @@ config :logger, :console,
 
 config :logger, handle_otp_reports: false
 
-config :rabbit_mq_ex,
+config :rabbit_mq,
   heartbeat_interval_sec: 15,
   reconnect_interval_ms: 2500,
   max_channels_per_connection: 16

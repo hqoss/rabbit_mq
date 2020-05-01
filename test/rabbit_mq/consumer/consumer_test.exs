@@ -5,7 +5,7 @@ defmodule RabbitMQTest.Consumer do
 
   use ExUnit.Case
 
-  @amqp_url Application.get_env(:rabbit_mq_ex, :amqp_url)
+  @amqp_url Application.get_env(:rabbit_mq, :amqp_url)
 
   defmodule TestConsumer do
     @exchange "#{__MODULE__}"

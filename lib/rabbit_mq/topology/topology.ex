@@ -74,7 +74,7 @@ defmodule RabbitMQ.Topology do
       # i.e., with an exit reason other than `:normal`, `:shutdown`, or `{:shutdown, term}`.
       use GenServer, restart: :transient
 
-      @amqp_url Application.get_env(:rabbit_mq_ex, :amqp_url)
+      @amqp_url Application.get_env(:rabbit_mq, :amqp_url)
 
       @exchanges unquote(Keyword.get(opts, :exchanges, []))
       @this_module __MODULE__

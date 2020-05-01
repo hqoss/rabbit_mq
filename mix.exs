@@ -3,7 +3,7 @@ defmodule MQ.MixProject do
 
   def project do
     [
-      app: :rabbit_mq_ex,
+      app: :rabbit_mq,
       version: "0.0.0-alpha-1",
       elixir: "~> 1.10",
       start_permanent: Mix.env() == :prod,
@@ -39,6 +39,9 @@ defmodule MQ.MixProject do
 
   defp extras do
     [
+      # License
+      "LICENSE.md",
+
       # Introduction
       "guides/introduction/overview.md",
       "guides/introduction/configuration.md",
@@ -60,7 +63,7 @@ defmodule MQ.MixProject do
   defp package do
     [
       # These are the default files included in the package
-      files: ~w(lib/core lib/rabbit_mq .formatter.exs mix.exs README*),
+      files: ~w(lib mix.exs README.md),
       licenses: ["Apache 2.0"],
       links: %{"GitHub" => "https://github.com/hqoss/rabbit_mq"},
       maintainers: ["Slavo Vojacek"]
