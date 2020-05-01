@@ -41,17 +41,19 @@ defmodule MQ.MixProject do
     [
       # Introduction
       "guides/introduction/overview.md",
-      "guides/introduction/configuration.md"
+      "guides/introduction/configuration.md",
 
-      # Configuration
-      # "guides/configuration/overview.md"
+      # Advanced
+      "guides/advanced/topology.md",
+      "guides/advanced/consumers.md",
+      "guides/advanced/producers.md"
     ]
   end
 
   defp groups_for_extras do
     [
-      Introduction: ~r/guides\/introduction\//
-      # Configuration: ~r/guides\/configuration\//
+      Introduction: ~r/guides\/introduction\//,
+      Advanced: ~r/guides\/advanced\//
     ]
   end
 
