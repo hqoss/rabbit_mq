@@ -1,6 +1,6 @@
 defmodule RabbitMQ.Topology do
   @moduledoc """
-  A convenience module that can be used to establish the (RabbitMQ) network topology.
+  A convenience module that can be used to establish the (RabbitMQ) routing topology.
 
   First, create a module that `use`s `RabbitMQ.Topology` to define exchanges and their
   corresponding bindings as shown below.
@@ -24,7 +24,7 @@ defmodule RabbitMQ.Topology do
   that rely on the exchanges configured within it start.
 
   ⚠️ Please note that the `Topology` module will terminate gracefully as soon as the
-  network is configured.
+  desired routing is configured.
 
       children = [
         RabbitSample.Topology,

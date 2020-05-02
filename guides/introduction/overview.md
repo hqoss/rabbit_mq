@@ -12,6 +12,8 @@ The following modules are provided;
 
 ⚠️ The following examples assume you've already set up your (RabbitMQ) routing topology as shown below.
 
+ℹ️ Consult the `RabbitMQ.Topology` module to learn how to quickly establish desired routing topology.
+
 | source_name | source_kind | destination_name          | destination_kind | routing_key      | arguments |
 | ----------- | ----------- | ------------------------- | ---------------- | ---------------- | --------- |
 | customer    | exchange    | customer/customer.created | queue            | customer.created | \[]       |
