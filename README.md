@@ -110,6 +110,12 @@ defmodule RabbitSample.CustomerProducer do
 end
 ```
 
+⚠️ Please note that all Producer workers implement "reliable publishing". Each Producer worker handles its publisher confirms _asynchronously_, striking a delicate balance between performance and reliability.
+
+To understand why this is important, please refer to the [reliable publishing implementation guide](https://www.rabbitmq.com/tutorials/tutorial-seven-java.html).
+
+ℹ️ In the unlikely event of an unexpected Publisher `nack`, your server will be notified via the `on_unexpected_nack/2` callback, letting you handle such exceptions in any way you see fit.
+
 ### Consumers
 
 To consume messages off the respective queues, we will define 2 separate consumers.
@@ -223,9 +229,9 @@ This has been possible through
 -   [Connections](https://www.rabbitmq.com/connections.html)
 -   [Channels](https://www.rabbitmq.com/channels.html)
 -   [Reliability Guide](https://www.rabbitmq.com/reliability.html)
--   [Publisher Confirms](https://www.rabbitmq.com/confirms.html#publisher-confirms)
 -   [Consumer Acknowledgements and Publisher Confirms](https://www.rabbitmq.com/confirms.html)
 -   [Consumer Acknowledgement Modes and Data Safety Considerations](https://www.rabbitmq.com/confirms.html#acknowledgement-modes)
+-   [Reliable publishing with publisher confirms](https://www.rabbitmq.com/tutorials/tutorial-seven-java.html)
 -   [Consumer Prefetch](https://www.rabbitmq.com/consumer-prefetch.html)
 -   [Production Checklist](https://www.rabbitmq.com/production-checklist.html)
 -   [RabbitMQ Best Practices](https://www.cloudamqp.com/blog/2017-12-29-part1-rabbitmq-best-practice.html)
