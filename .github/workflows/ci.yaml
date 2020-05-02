@@ -37,6 +37,7 @@ jobs:
       with:
         elixir-version: ${{ matrix.elixir-version }}
         otp-version: ${{ matrix.otp-version }}
+
     - name: Install Dependencies
       run: mix deps.get
     - name: Check code formatting
