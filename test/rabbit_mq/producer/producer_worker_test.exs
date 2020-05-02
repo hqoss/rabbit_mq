@@ -126,7 +126,7 @@ defmodule RabbitMQTest.Producer.Worker do
       refute_receive(_)
     end
 
-    test ":basic_ack deletes outstanding confirm", %{channel: channel} do
+    test ":basic_ack deletes a single outstanding confirm", %{channel: channel} do
       assert {:ok, pid} =
                start_supervised(
                  {Worker,
@@ -189,6 +189,75 @@ defmodule RabbitMQTest.Producer.Worker do
              ] = :ets.tab2list(outstanding_confirms)
 
       send(pid, {:basic_ack, 2, true})
+
+      :timer.sleep(5)
+
+      assert [] = :ets.tab2list(outstanding_confirms)
+    end
+
+    test ":basic_nack deletes a single outstanding confirm", %{channel: channel} do
+      assert {:ok, pid} =
+               start_supervised(
+                 {Worker,
+                  %{
+                    channel: channel,
+                    confirm_type: :async
+                  }}
+               )
+
+      assert %Worker.State{
+               outstanding_confirms: outstanding_confirms
+             } = :sys.get_state(pid)
+
+      assert [] = :ets.tab2list(outstanding_confirms)
+
+      :ets.insert(outstanding_confirms, {0, "payload_0"})
+      :ets.insert(outstanding_confirms, {1, "payload_1"})
+      :ets.insert(outstanding_confirms, {2, "payload_2"})
+
+      assert [
+               {0, "payload_0"},
+               {1, "payload_1"},
+               {2, "payload_2"}
+             ] = :ets.tab2list(outstanding_confirms)
+
+      send(pid, {:basic_nack, 1, false})
+
+      :timer.sleep(5)
+
+      assert [
+               {0, "payload_0"},
+               {2, "payload_2"}
+             ] = :ets.tab2list(outstanding_confirms)
+    end
+
+    test ":basic_nack deletes multiple outstanding confirms", %{channel: channel} do
+      assert {:ok, pid} =
+               start_supervised(
+                 {Worker,
+                  %{
+                    channel: channel,
+                    confirm_type: :async
+                  }}
+               )
+
+      assert %Worker.State{
+               outstanding_confirms: outstanding_confirms
+             } = :sys.get_state(pid)
+
+      assert [] = :ets.tab2list(outstanding_confirms)
+
+      :ets.insert(outstanding_confirms, {0, "payload_0"})
+      :ets.insert(outstanding_confirms, {1, "payload_1"})
+      :ets.insert(outstanding_confirms, {2, "payload_2"})
+
+      assert [
+               {0, "payload_0"},
+               {1, "payload_1"},
+               {2, "payload_2"}
+             ] = :ets.tab2list(outstanding_confirms)
+
+      send(pid, {:basic_nack, 2, true})
 
       :timer.sleep(5)
 

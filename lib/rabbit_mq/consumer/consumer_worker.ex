@@ -104,7 +104,7 @@ defmodule RabbitMQ.Consumer.Worker do
 
     if Process.alive?(channel.pid) do
       # The channel itself is managed outside of this worker and as such
-      # will be closed and re-established with by the parent process.
+      # will be closed and re-established by the parent process.
       Basic.cancel(channel, consumer_tag)
     end
 
