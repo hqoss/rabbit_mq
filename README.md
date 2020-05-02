@@ -60,7 +60,9 @@ The following modules are provided;
 
 ![RabbitMQ Topology](assets/rabbitmq-topology.png)
 
-First, ensure you point to a valid `amqp_url` by adding this into your `config.exs`.
+First, ensure you point to a valid `amqp_url` by configuring `:rabbit_mq` correctly in your `config.exs`.
+
+ℹ️ For advanced configuration options, consult the [Configuration section](#configuration).
 
 ```elixir
 config :rabbit_mq, :amqp_url, "amqp://guest:guest@localhost:5672"
@@ -186,7 +188,7 @@ b) each of our modules' workers maintains its dedicated channel under the respec
 
 ## Configuration
 
-The following can be configured.
+The following options can be configured.
 
 ```elixir
 config :rabbit_mq,
