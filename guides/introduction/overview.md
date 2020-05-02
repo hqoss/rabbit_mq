@@ -200,6 +200,26 @@ config :rabbit_mq,
 
 ⚠️ Please consult the [Detecting Dead TCP Connections with Heartbeats and TCP Keepalives](https://www.rabbitmq.com/heartbeats.html) guide to understand how to best configure `:heartbeat_interval_sec`.
 
+### Excessive logging
+
+See [original section in `amqp` docs](https://github.com/pma/amqp#log-related-to-amqp-supervisors-are-too-verbose).
+
+Add the following configuration.
+
+```elixir
+config :logger, handle_otp_reports: false
+```
+
+### Lager conflicts with Elixir logger
+
+Lager is used by `rabbit_common` and is not Elixir's best friend yet. You need a workaround.
+
+⚠️ In `mix.exs`, you have to load `:lager` before `:logger`.
+
+```elixir
+  extra_applications: [:lager, :logger]
+```
+
 ## Balanced performance and reliability
 
 The RabbitMQ modules are pre-configured with sensible defaults and follow design principles that improve and delicately balance both performance _and_ reliability.

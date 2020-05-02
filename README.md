@@ -23,6 +23,9 @@
 
 -   [Configuration](#configuration)
 
+    -   [Excessive logging](#excessive-logging)
+    -   [Lager conflicts with Elixir logger](#lager-conflicts-with-elixir-logger)
+
 -   [Balanced performance and reliability](#balanced-performance-and-reliability)
 
 -   [TODO](#todo)
@@ -240,6 +243,26 @@ config :rabbit_mq,
 ⚠️ Please consult the [Channels Resource Usage](https://www.rabbitmq.com/channels.html#resource-usage) guide to understand how to best configure `:max_channels_per_connection`.
 
 ⚠️ Please consult the [Detecting Dead TCP Connections with Heartbeats and TCP Keepalives](https://www.rabbitmq.com/heartbeats.html) guide to understand how to best configure `:heartbeat_interval_sec`.
+
+### Excessive logging
+
+See [original section in `amqp` docs](https://github.com/pma/amqp#log-related-to-amqp-supervisors-are-too-verbose).
+
+Add the following configuration.
+
+```elixir
+config :logger, handle_otp_reports: false
+```
+
+### Lager conflicts with Elixir logger
+
+Lager is used by `rabbit_common` and is not Elixir's best friend yet. You need a workaround.
+
+⚠️ In `mix.exs`, you have to load `:lager` before `:logger`.
+
+```elixir
+  extra_applications: [:lager, :logger]
+```
 
 ## Balanced performance and reliability
 
