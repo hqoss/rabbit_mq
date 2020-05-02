@@ -1,6 +1,6 @@
 defmodule RabbitMQ.Producer do
   @moduledoc """
-  This module can be `use`d to establish a pool of Producer workers.
+  This module can be `use`d to start and maintain a pool of Producer workers.
 
   ## Example usage
 
@@ -10,18 +10,39 @@ defmodule RabbitMQ.Producer do
 
   First, define your (ideally domain-specific) Producer:
 
-      defmodule CustomerProducer do
+      defmodule RabbitSample.CustomerProducer do
+        @moduledoc \"\"\"
+        Publishes pre-configured events onto the "customer" exchange.
+        \"\"\"
+
         use RabbitMQ.Producer, exchange: "customer", worker_count: 3
 
-        def customer_updated(updated_customer) when is_map(updated_customer) do
-          # See https://hexdocs.pm/amqp/AMQP.Basic.html#publish/5 for all available options.
+        @doc \"\"\"
+        Publishes an event routed via "customer.created".
+        \"\"\"
+        def customer_created(customer_id) when is_binary(customer_id) do
           opts = [
             content_type: "application/json",
             correlation_id: UUID.uuid4(),
             mandatory: true
           ]
 
-          payload = Jason.encode!(updated_customer)
+          payload = Jason.encode!(%{v: "1.0.0", customer_id: customer_id})
+
+          publish(payload, "customer.created", opts)
+        end
+
+        @doc \"\"\"
+        Publishes an event routed via "customer.updated".
+        \"\"\"
+        def customer_updated(updated_customer) when is_map(updated_customer) do
+          opts = [
+            content_type: "application/json",
+            correlation_id: UUID.uuid4(),
+            mandatory: true
+          ]
+
+          payload = Jason.encode!(%{v: "1.0.0", customer_data: updated_customer})
 
           publish(payload, "customer.updated", opts)
         end
@@ -30,17 +51,31 @@ defmodule RabbitMQ.Producer do
   Then, start as normal under your existing supervision tree:
 
       children = [
-        Topology,
-        CustomerConsumer,
-        CustomerProducer,
-        # ...and more
+        RabbitSample.Topology,
+        RabbitSample.CustomerProducer,
+        RabbitSample.CustomerCreatedConsumer,
+        RabbitSample.CustomerUpdatedConsumer
       ]
 
-      Supervisor.start_link(children, strategy: :one_for_one)
+      opts = [strategy: :one_for_one, name: RabbitSample.Supervisor]
+      Supervisor.start_link(children, opts)
 
   Finally, call the exposed methods from your application:
 
-      CustomerProducer.customer_updated(updated_customer)
+      RabbitSample.CustomerProducer.customer_created(customer_id)
+      RabbitSample.CustomerProducer.customer_updated(updated_customer)
+
+
+  ⚠️ Please note that all Producer workers implement "reliable publishing".
+  Each Producer worker handles its publisher confirms _asynchronously_,
+  striking a delicate balance between performance and reliability.
+
+  To understand why this is important, please refer to the
+  [reliable publishing implementation guide](https://www.rabbitmq.com/tutorials/tutorial-seven-java.html).
+
+  ℹ️ In the unlikely event of an unexpected Publisher `nack`,
+  your server will be notified via the `on_unexpected_nack/2` callback,
+  letting you handle such exceptions in any way you see fit.
 
   ## Configuration
 

@@ -30,6 +30,7 @@ defmodule MQ.MixProject do
     [
       filter_prefix: "RabbitMQ",
       main: "overview",
+      assets: "assets",
       extra_section: "GUIDES",
       extras: extras(),
       groups_for_extras: groups_for_extras(),
@@ -44,7 +45,6 @@ defmodule MQ.MixProject do
 
       # Introduction
       "guides/introduction/overview.md",
-      "guides/introduction/configuration.md",
 
       # Advanced
       "guides/advanced/topology.md",

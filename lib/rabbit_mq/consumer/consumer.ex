@@ -1,6 +1,6 @@
 defmodule RabbitMQ.Consumer do
   @moduledoc """
-  This module can be `use`d to establish a pool of Consumer workers.
+  This module can be `use`d to start and maintain a pool of Consumer workers.
 
   ## Example usage
 
@@ -8,15 +8,26 @@ defmodule RabbitMQ.Consumer do
 
   ℹ️ The following example assumes that the `"customer/customer.updated"` queue already exists.
 
-  First, define your (ideally domain-specific) Consumer:
+  First, define your Consumer(s):
 
-      defmodule CustomerConsumer do
-        use RabbitMQ.Consumer, queue: "customer/customer.updated", worker_count: 3
+      defmodule RabbitSample.CustomerCreatedConsumer do
+        use RabbitMQ.Consumer, queue: "customer/customer.created", worker_count: 2, prefetch_count: 3
 
         require Logger
 
         def consume(payload, meta, channel) do
-          Logger.info(payload)
+          Logger.info("Customer #{payload} created.")
+          ack(channel, meta.delivery_tag)
+        end
+      end
+
+      defmodule RabbitSample.CustomerUpdatedConsumer do
+        use RabbitMQ.Consumer, queue: "customer/customer.updated", worker_count: 2, prefetch_count: 6
+
+        require Logger
+
+        def consume(payload, meta, channel) do
+          Logger.info("Customer updated. Data: #{payload}.")
           ack(channel, meta.delivery_tag)
         end
       end
@@ -24,16 +35,17 @@ defmodule RabbitMQ.Consumer do
   Then, start as normal under your existing supervision tree:
 
       children = [
-        Topology,
-        CustomerConsumer,
-        CustomerProducer,
-        # ...and more
+        RabbitSample.Topology,
+        RabbitSample.CustomerProducer,
+        RabbitSample.CustomerCreatedConsumer,
+        RabbitSample.CustomerUpdatedConsumer
       ]
 
-      Supervisor.start_link(children, strategy: :one_for_one)
+      opts = [strategy: :one_for_one, name: RabbitSample.Supervisor]
+      Supervisor.start_link(children, opts)
 
-  As messages are published onto the `"customer/customer.updated"` queue, `consume/3` (in `CustomerConsumer`)
-  will be invoked.
+  As messages are published onto the `"customer/customer.created"`, or `"customer/customer.updated"` queues,
+  the corresponding `consume/3` will be invoked.
 
   ⚠️ Please note that automatic message acknowledgement is **disabled** in `rabbit_mq`, therefore
   it's _your_ responsibility to ensure messages are `ack`'d or `nack`'d.

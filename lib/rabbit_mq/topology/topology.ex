@@ -8,17 +8,17 @@ defmodule RabbitMQ.Topology do
   ⚠️ Please note that exclusive queues cannot be configured here. You may need to consult
   the `RabbitMQ.Consumer` module for details on how exclusive queues can be set up and used.
 
-      defmodule Topology do
+      defmodule RabbitSample.Topology do
         use RabbitMQ.Topology,
           exchanges: [
             {"customer", :topic,
-              [
-                {"customer.created", "customer/customer.created", durable: true},
-                {"customer.updated", "customer/customer.updated", durable: true},
-                {"#", "customer/#"}
-              ], durable: true}
+            [
+              {"customer.created", "customer/customer.created", durable: true},
+              {"customer.updated", "customer/customer.updated", durable: true}
+            ], durable: true}
           ]
       end
+
 
   Then, simply add this module to your supervision tree, *before* any Consumers or Producers
   that rely on the exchanges configured within it start.
@@ -27,13 +27,14 @@ defmodule RabbitMQ.Topology do
   network is configured.
 
       children = [
-        Topology,
-        MyConsumer,
-        MyProducer,
-        # ...and more
+        RabbitSample.Topology,
+        RabbitSample.CustomerProducer,
+        RabbitSample.CustomerCreatedConsumer,
+        RabbitSample.CustomerUpdatedConsumer
       ]
 
-      Supervisor.start_link(children, strategy: :one_for_one)
+      opts = [strategy: :one_for_one, name: RabbitSample.Supervisor]
+      Supervisor.start_link(children, opts)
   """
 
   @doc """
