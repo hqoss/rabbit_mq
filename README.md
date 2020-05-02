@@ -56,11 +56,11 @@ The following modules are provided;
 | customer    | exchange    | customer/customer.created | queue            | customer.created | \[]       |
 | customer    | exchange    | customer/customer.updated | queue            | customer.updated | \[]       |
 
-As seen in the RabbitMQ Management dashboard.
+As seen in the RabbitMQ Management dashboard:
 
 ![RabbitMQ Topology](assets/rabbitmq-topology.png)
 
-First, ensure you point to a valid `amqp_url` by configuring `:rabbit_mq` correctly in your `config.exs`.
+First, ensure you point to a valid `amqp_url` by configuring `:rabbit_mq` in your `config.exs`.
 
 ```elixir
 config :rabbit_mq, :amqp_url, "amqp://guest:guest@localhost:5672"
@@ -115,6 +115,10 @@ end
 ### Consumers
 
 To consume messages off the respective queues, we will define 2 separate consumers.
+
+⚠️ Please note that automatic message acknowledgement is **disabled** in `rabbit_mq`, therefore it's _your_ responsibility to ensure messages are `ack`'d or `nack`'d.
+
+ℹ️ Please consult the [Consumer Acknowledgement Modes and Data Safety Considerations](https://www.rabbitmq.com/confirms.html#acknowledgement-modes) for more details.
 
 ```elixir
 defmodule RabbitSample.CustomerCreatedConsumer do
