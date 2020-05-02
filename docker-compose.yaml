@@ -8,3 +8,14 @@ services:
     ports:
       - 15672:15672
       - 5672:5672
+    # healthcheck:
+    #   test: ["CMD", "rabbitmqctl", "await_startup"]
+    #   interval: 1m30s
+    #   timeout: 10s
+    #   retries: 3
+    #   start_period: 40s
+    # options: >-
+    #   - health-cmd rabbitmqctl await_startup
+    #   - health-interval 10s
+    #   - health-timeout 5s
+    #   - health-retries 5

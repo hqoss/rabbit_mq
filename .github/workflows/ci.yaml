@@ -20,10 +20,10 @@ jobs:
         ports:
           - 5672:5672
         # options: >-
-        # - health-cmd pg_isready
-        # - health-interval 10s
-        # - health-timeout 5s
-        # - health-retries 5
+        #   - health-cmd rabbitmqctl await_startup
+        #   - health-interval 10s
+        #   - health-timeout 5s
+        #   - health-retries 5
 
     strategy:
       matrix:
@@ -39,6 +39,8 @@ jobs:
         otp-version: ${{ matrix.otp-version }}
     - name: Install Dependencies
       run: mix deps.get
+    - name: Check code formatting
+      run: mix format --check-formatted
     - name: Compile source
       run: mix compile
     - name: Run Tests
