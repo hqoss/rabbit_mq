@@ -220,6 +220,415 @@ Lager is used by `rabbit_common` and is not Elixir's best friend yet. You need a
   extra_applications: [:lager, :logger]
 ```
 
+## Testing
+
+The library itself has been rigorously tested, so you should ideally only need to test whether you've configured your modules correctly.
+
+Additionally, you _should_ test any side-effects driven by your Producers or Consumers.
+
+### Producers
+
+Here is a few ideas on how you can test your Producers.
+
+⚠️ The below snippet assumes your application starts the `CustomerProducer` module as shown in earlier examples.
+
+```elixir
+defmodule RabbitSampleTest.CustomerProducer do
+  alias AMQP.{Basic, Channel, Connection, Queue}
+  alias RabbitSample.CustomerProducer
+
+  use ExUnit.Case
+
+  @amqp_url Application.get_env(:rabbit_mq, :amqp_url)
+  @exchange "customer"
+
+  setup_all do
+    assert {:ok, connection} = Connection.open(@amqp_url)
+    assert {:ok, channel} = Channel.open(connection)
+
+    # Declare an exclusive queue and bind it to the customer exchange.
+    {:ok, %{queue: queue}} = Queue.declare(channel, "", exclusive: true)
+    :ok = Queue.bind(channel, queue, @exchange, routing_key: "#")
+
+    # Clean up after all tests have ran.
+    on_exit(fn ->
+      # This queue would have been deleted automatically when the connection
+      # gets closed, however we prefer to be explicit. Also, we ensure there
+      # are no messages left hanging in the queue.
+      assert {:ok, %{message_count: 0}} = Queue.delete(channel, queue)
+
+      assert :ok = Channel.close(channel)
+      assert :ok = Connection.close(connection)
+    end)
+
+    [channel: channel, queue: queue]
+  end
+
+  setup %{channel: channel, queue: queue} do
+    # Each test will be notified when a message is consumed.
+    assert {:ok, consumer_tag} = Basic.consume(channel, queue)
+
+    # This will always be the first message received by the process.
+    assert_receive({:basic_consume_ok, %{consumer_tag: ^consumer_tag}})
+
+    on_exit(fn ->
+      # Ensure there are no messages in the queue as the next test is about to start.
+      assert true = Queue.empty?(channel, queue)
+    end)
+
+    [
+      channel: channel,
+      consumer_tag: consumer_tag
+    ]
+  end
+
+  describe "#{__MODULE__}" do
+    test "defines correctly configured child specification", %{
+      channel: channel,
+      consumer_tag: consumer_tag
+    } do
+      assert %{
+               id: CustomerProducer,
+               restart: :permanent,
+               shutdown: :brutal_kill,
+               start:
+                 {RabbitMQ.Producer, :start_link,
+                  [
+                    %{confirm_type: :async, exchange: @exchange, worker_count: 3},
+                    [name: CustomerProducer]
+                  ]},
+               type: :supervisor
+             } = CustomerProducer.child_spec([])
+
+      Basic.cancel(channel, consumer_tag)
+
+      # This will always be the last message received by the process.
+      assert_receive({:basic_cancel_ok, %{consumer_tag: ^consumer_tag}})
+
+      # Ensure no further messages are received.
+      refute_receive(_)
+    end
+
+    test "customer_created/1 publishes correctly configured events", %{
+      channel: channel,
+      consumer_tag: consumer_tag
+    } do
+      customer_id = UUID.uuid4()
+      expected_payload = Jason.encode!(%{v: "1.0.0", customer_id: customer_id})
+
+      assert {:ok, _seq_no} = CustomerProducer.customer_created(customer_id)
+
+      assert_receive(
+        {:basic_deliver, ^expected_payload,
+         %{
+           consumer_tag: ^consumer_tag,
+           content_type: "application/json",
+           correlation_id: correlation_id,
+           delivery_tag: delivery_tag,
+           routing_key: "customer.created"
+         }}
+      )
+
+      # Ensure correlation_id is a valid UUID.
+      assert {:ok, _} = UUID.info(correlation_id)
+
+      # Acknowledge that the message has been received.
+      Basic.ack(channel, delivery_tag)
+
+      # Stop consuming.
+      Basic.cancel(channel, consumer_tag)
+
+      # This will always be the last message received by the process.
+      assert_receive({:basic_cancel_ok, %{consumer_tag: ^consumer_tag}})
+
+      # Ensure no further messages are received.
+      refute_receive(_)
+    end
+
+    test "customer_updated/1 publishes correctly configured events", %{
+      channel: channel,
+      consumer_tag: consumer_tag
+    } do
+      customer_data = %{id: UUID.uuid4()}
+      expected_payload = Jason.encode!(%{v: "1.0.0", customer_data: customer_data})
+
+      assert {:ok, _seq_no} = CustomerProducer.customer_updated(customer_data)
+
+      assert_receive(
+        {:basic_deliver, ^expected_payload,
+         %{
+           consumer_tag: ^consumer_tag,
+           content_type: "application/json",
+           correlation_id: correlation_id,
+           delivery_tag: delivery_tag,
+           routing_key: "customer.updated"
+         }}
+      )
+
+      # Ensure correlation_id is a valid UUID.
+      assert {:ok, _} = UUID.info(correlation_id)
+
+      # Acknowledge that the message has been received.
+      Basic.ack(channel, delivery_tag)
+
+      # Stop consuming.
+      Basic.cancel(channel, consumer_tag)
+
+      # This will always be the last message received by the process.
+      assert_receive({:basic_cancel_ok, %{consumer_tag: ^consumer_tag}})
+
+      # Ensure no further messages are received.
+      refute_receive(_)
+    end
+  end
+end
+```
+
+### Consumers
+
+Here is a few ideas on how you can test your Consumers.
+
+⚠️ The below snippet assumes your application starts the `CustomerCreatedConsumer` module as shown in earlier examples.
+
+```elixir
+defmodule RabbitSampleTest.CustomerCreatedConsumer do
+  alias AMQP.{Basic, Channel, Connection, Queue}
+  alias RabbitSample.CustomerCreatedConsumer
+
+  import ExUnit.CaptureLog
+
+  use ExUnit.Case
+
+  @amqp_url Application.get_env(:rabbit_mq, :amqp_url)
+  @exchange "customer"
+  @queue "#{@exchange}/customer.created"
+
+  setup_all do
+    assert {:ok, connection} = Connection.open(@amqp_url)
+    assert {:ok, channel} = Channel.open(connection)
+
+    # Declare an exclusive queue and bind it to the customer exchange.
+    {:ok, %{queue: queue}} = Queue.declare(channel, "", exclusive: true)
+    :ok = Queue.bind(channel, queue, @exchange, routing_key: "#")
+
+    # Clean up after all tests have ran.
+    on_exit(fn ->
+      # This queue would have been deleted automatically when the connection
+      # gets closed, however we prefer to be explicit. Also, we ensure there
+      # are no messages left hanging in the queue.
+      assert {:ok, %{message_count: 0}} = Queue.delete(channel, queue)
+
+      assert :ok = Channel.close(channel)
+      assert :ok = Connection.close(connection)
+    end)
+
+    [channel: channel, queue: queue]
+  end
+
+  setup %{channel: channel, queue: queue} do
+    # Each test will be notified when a message is consumed.
+    assert {:ok, consumer_tag} = Basic.consume(channel, queue)
+
+    # This will always be the first message received by the process.
+    assert_receive({:basic_consume_ok, %{consumer_tag: ^consumer_tag}})
+
+    on_exit(fn ->
+      # Ensure there are no messages in the queue as the next test is about to start.
+      assert true = Queue.empty?(channel, queue)
+    end)
+
+    [
+      channel: channel,
+      consumer_tag: consumer_tag
+    ]
+  end
+
+  describe "#{__MODULE__}" do
+    test "defines correctly configured child specification", %{
+      channel: channel,
+      consumer_tag: consumer_tag
+    } do
+      assert %{
+               id: CustomerCreatedConsumer,
+               restart: :permanent,
+               shutdown: :brutal_kill,
+               start:
+                 {RabbitMQ.Consumer, :start_link,
+                  [
+                    %{consume_cb: _, prefetch_count: 3, queue: @queue, worker_count: 2},
+                    [name: CustomerCreatedConsumer]
+                  ]},
+               type: :supervisor
+             } = CustomerCreatedConsumer.child_spec([])
+
+      # Stop consuming.
+      Basic.cancel(channel, consumer_tag)
+
+      # This will always be the last message received by the process.
+      assert_receive({:basic_cancel_ok, %{consumer_tag: ^consumer_tag}})
+
+      # Ensure no further messages are received.
+      refute_receive(_)
+    end
+
+    test "consume/3 logs a message", %{
+      channel: channel,
+      consumer_tag: consumer_tag
+    } do
+      correlation_id = UUID.uuid4()
+      payload = Jason.encode!(%{v: "1.0.0", customer_id: UUID.uuid4()})
+
+      Basic.publish(channel, @exchange, "customer.created", payload,
+        correlation_id: correlation_id
+      )
+
+      assert_receive(
+        {:basic_deliver, payload,
+         %{
+           consumer_tag: ^consumer_tag,
+           correlation_id: ^correlation_id,
+           routing_key: "customer.created"
+         } = meta}
+      )
+
+      assert capture_log(fn ->
+               CustomerCreatedConsumer.consume(payload, meta, channel)
+             end) =~ "Customer #{payload} created"
+
+      # Stop consuming.
+      Basic.cancel(channel, consumer_tag)
+
+      # This will always be the last message received by the process.
+      assert_receive({:basic_cancel_ok, %{consumer_tag: ^consumer_tag}})
+
+      # Ensure no further messages are received.
+      refute_receive(_)
+    end
+  end
+end
+```
+
+⚠️ The below snippet assumes your application starts the `CustomerUpdatedConsumer` module as shown in earlier examples.
+
+```elixir
+defmodule RabbitSampleTest.CustomerUpdatedConsumer do
+  alias AMQP.{Basic, Channel, Connection, Queue}
+  alias RabbitSample.CustomerUpdatedConsumer
+
+  import ExUnit.CaptureLog
+
+  use ExUnit.Case
+
+  @amqp_url Application.get_env(:rabbit_mq, :amqp_url)
+  @exchange "customer"
+  @queue "#{@exchange}/customer.updated"
+
+  setup_all do
+    assert {:ok, connection} = Connection.open(@amqp_url)
+    assert {:ok, channel} = Channel.open(connection)
+
+    # Declare an exclusive queue and bind it to the customer exchange.
+    {:ok, %{queue: queue}} = Queue.declare(channel, "", exclusive: true)
+    :ok = Queue.bind(channel, queue, @exchange, routing_key: "#")
+
+    # Clean up after all tests have ran.
+    on_exit(fn ->
+      # This queue would have been deleted automatically when the connection
+      # gets closed, however we prefer to be explicit. Also, we ensure there
+      # are no messages left hanging in the queue.
+      assert {:ok, %{message_count: 0}} = Queue.delete(channel, queue)
+
+      assert :ok = Channel.close(channel)
+      assert :ok = Connection.close(connection)
+    end)
+
+    [channel: channel, queue: queue]
+  end
+
+  setup %{channel: channel, queue: queue} do
+    # Each test will be notified when a message is consumed.
+    assert {:ok, consumer_tag} = Basic.consume(channel, queue)
+
+    # This will always be the first message received by the process.
+    assert_receive({:basic_consume_ok, %{consumer_tag: ^consumer_tag}})
+
+    on_exit(fn ->
+      # Ensure there are no messages in the queue as the next test is about to start.
+      assert true = Queue.empty?(channel, queue)
+    end)
+
+    [
+      channel: channel,
+      consumer_tag: consumer_tag
+    ]
+  end
+
+  describe "#{__MODULE__}" do
+    test "defines correctly configured child specification", %{
+      channel: channel,
+      consumer_tag: consumer_tag
+    } do
+      assert %{
+               id: CustomerUpdatedConsumer,
+               restart: :permanent,
+               shutdown: :brutal_kill,
+               start:
+                 {RabbitMQ.Consumer, :start_link,
+                  [
+                    %{consume_cb: _, prefetch_count: 6, queue: @queue, worker_count: 2},
+                    [name: CustomerUpdatedConsumer]
+                  ]},
+               type: :supervisor
+             } = CustomerUpdatedConsumer.child_spec([])
+
+      # Stop consuming.
+      Basic.cancel(channel, consumer_tag)
+
+      # This will always be the last message received by the process.
+      assert_receive({:basic_cancel_ok, %{consumer_tag: ^consumer_tag}})
+
+      # Ensure no further messages are received.
+      refute_receive(_)
+    end
+
+    test "consume/3 logs a message", %{
+      channel: channel,
+      consumer_tag: consumer_tag
+    } do
+      correlation_id = UUID.uuid4()
+      customer_data = %{id: UUID.uuid4()}
+      payload = Jason.encode!(%{v: "1.0.0", customer_data: customer_data})
+
+      Basic.publish(channel, @exchange, "customer.updated", payload,
+        correlation_id: correlation_id
+      )
+
+      assert_receive(
+        {:basic_deliver, payload,
+         %{
+           consumer_tag: ^consumer_tag,
+           correlation_id: ^correlation_id,
+           routing_key: "customer.updated"
+         } = meta}
+      )
+
+      assert capture_log(fn ->
+               CustomerUpdatedConsumer.consume(payload, meta, channel)
+             end) =~ "Customer updated. Data: #{payload}."
+
+      # Stop consuming.
+      Basic.cancel(channel, consumer_tag)
+
+      # This will always be the last message received by the process.
+      assert_receive({:basic_cancel_ok, %{consumer_tag: ^consumer_tag}})
+
+      # Ensure no further messages are received.
+      refute_receive(_)
+    end
+  end
+end
+```
+
 ## Balanced performance and reliability
 
 The RabbitMQ modules are pre-configured with sensible defaults and follow design principles that improve and delicately balance both performance _and_ reliability.
