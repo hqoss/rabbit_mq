@@ -26,6 +26,11 @@
     -   [Excessive logging](#excessive-logging)
     -   [Lager conflicts with Elixir logger](#lager-conflicts-with-elixir-logger)
 
+-   [Testing](#testing)
+
+    -   [Producers](#producers-1)
+    -   [Consumers](#consumers-1)
+
 -   [Balanced performance and reliability](#balanced-performance-and-reliability)
 
 -   [TODO](#todo)
