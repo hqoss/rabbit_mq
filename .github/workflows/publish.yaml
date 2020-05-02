@@ -40,11 +40,8 @@ jobs:
 
     - name: Build package
       run: mix hex.build
-      env:
-        MIX_ENV: dev
 
     - name: Publish package
       run: mix hex.publish --yes
       env:
         HEX_API_KEY: ${{ secrets.HEX_API_KEY }}
-        MIX_ENV: dev

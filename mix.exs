@@ -4,7 +4,7 @@ defmodule MQ.MixProject do
   def project do
     [
       app: :rabbit_mq,
-      version: "0.0.7",
+      version: "0.0.8",
       elixir: "~> 1.9",
       start_permanent: Mix.env() == :prod,
       aliases: aliases(),
@@ -84,7 +84,7 @@ defmodule MQ.MixProject do
       {:ex_check, ">= 0.0.0", only: :dev, runtime: false},
       {:credo, "~> 1.4", only: :dev, runtime: false},
       {:dialyxir, "~> 1.0", only: :dev, runtime: false},
-      {:ex_doc, "~> 0.21", only: :dev, runtime: false},
+      {:ex_doc, "~> 0.21", only: [:dev, :test], runtime: false},
       {:excoveralls, "~> 0.10", only: :test, runtime: false}
     ]
   end
