@@ -122,22 +122,7 @@ defmodule RabbitMQ.Consumer do
       @prefetch_count unquote(Keyword.get(opts, :prefetch_count, 10))
       @queue unquote(Keyword.fetch!(opts, :queue))
       @worker_count unquote(Keyword.get(opts, :worker_count, 3))
-      @max_workers Application.compile_env(:rabbit_mq, :max_channels_per_connection, 8)
       @this_module __MODULE__
-
-      if @worker_count > @max_workers do
-        raise """
-        Cannot start #{@worker_count} workers, maximum channels per connection is #{@max_workers}.
-
-        You can configure this value as shown below;
-
-          config :rabbit_mq, max_channels_per_connection: 16
-
-        As a rule of thumb, most applications can use a single digit number of channels per connection.
-
-        For details, please consult the official RabbitMQ docs: https://www.rabbitmq.com/channels.html#channel-max.
-        """
-      end
 
       @callback consume(String.t(), map(), Channel.t()) :: term()
 
@@ -146,6 +131,20 @@ defmodule RabbitMQ.Consumer do
       ##############
 
       def child_spec(opts) do
+        if @worker_count > max_workers() do
+          raise """
+          Cannot start #{@worker_count} workers, maximum is #{max_workers()}.
+
+          You can configure this value as shown below;
+
+            config :rabbit_mq, max_channels_per_connection: 16
+
+          As a rule of thumb, most applications can use a single digit number of channels per connection.
+
+          For details, please consult the official RabbitMQ docs: https://www.rabbitmq.com/channels.html#channel-max.
+          """
+        end
+
         config = %{
           consume_cb: &consume/3,
           prefetch_count: @prefetch_count,
@@ -177,6 +176,12 @@ defmodule RabbitMQ.Consumer do
       defdelegate ack(channel, tag), to: Basic
       defdelegate nack(channel, tag), to: Basic
       defdelegate reject(channel, tag), to: Basic
+
+      #####################
+      # Private Functions #
+      #####################
+
+      defp max_workers, do: Application.get_env(:rabbit_mq, :max_channels_per_connection, 8)
     end
   end
 

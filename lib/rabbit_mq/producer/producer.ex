@@ -124,28 +124,27 @@ defmodule RabbitMQ.Producer do
       @confirm_type unquote(Keyword.get(opts, :confirm_type, :async))
       @exchange unquote(Keyword.fetch!(opts, :exchange))
       @worker_count unquote(Keyword.get(opts, :worker_count, 3))
-      @max_workers Application.compile_env(:rabbit_mq, :max_channels_per_connection, 8)
       @this_module __MODULE__
-
-      if @worker_count > @max_workers do
-        raise """
-        Cannot start #{@worker_count} workers, maximum channels per connection is #{@max_workers}.
-
-        You can configure this value as shown below;
-
-          config :rabbit_mq, max_channels_per_connection: 16
-
-        As a rule of thumb, most applications can use a single digit number of channels per connection.
-
-        For details, please consult the official RabbitMQ docs: https://www.rabbitmq.com/channels.html#channel-max.
-        """
-      end
 
       ##############
       # Public API #
       ##############
 
       def child_spec(opts) do
+        if @worker_count > max_workers() do
+          raise """
+          Cannot start #{@worker_count} workers, maximum is #{max_workers()}.
+
+          You can configure this value as shown below;
+
+            config :rabbit_mq, max_channels_per_connection: 16
+
+          As a rule of thumb, most applications can use a single digit number of channels per connection.
+
+          For details, please consult the official RabbitMQ docs: https://www.rabbitmq.com/channels.html#channel-max.
+          """
+        end
+
         config = %{
           confirm_type: @confirm_type,
           exchange: @exchange,
@@ -179,6 +178,8 @@ defmodule RabbitMQ.Producer do
           GenServer.call(producer_pid, {:publish, @exchange, routing_key, payload, opts})
         end
       end
+
+      defp max_workers, do: Application.get_env(:rabbit_mq, :max_channels_per_connection, 8)
     end
   end
 
