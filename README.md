@@ -21,8 +21,6 @@
 
 -   [Balanced performance and reliability](#balanced-performance-and-reliability)
 
--   [Consistency](#consistency)
-
 -   [TODO](#todo)
 
 ## Installation and Usage
@@ -181,12 +179,12 @@ The resulting application topology should look like this:
 
 Upon closer inspection using the RabbitMQ Management dashboard, we see that:
 
-a) each of our modules maintains its dedicated connection; and
-b) each of our modules' workers maintains its dedicated channel under the respective connection.
+-   a) each of our modules maintains its dedicated connection; and
+-   b) each of our modules' workers maintains its dedicated channel under the respective connection.
 
 ![Connections](assets/rabbitmq-connections.png)
 
-ℹ️ Detailed view of how individual workers have set up their channels. Note that the **different prefetch counts** correspond to the configuration we provided in our Consumers, and that the Producer's 3 workers operate in **Confirm mode**.
+ℹ️ Detailed view of how individual workers have set up their channels. Note that the **different prefetch counts** correspond to the different configuration we provided in our Consumers, and that the Producer's 3 worker channels operate in **Confirm mode**.
 
 ![Channels](assets/rabbitmq-channels.png)
 
@@ -232,46 +230,6 @@ This has been possible through
 -   [Production Checklist](https://www.rabbitmq.com/production-checklist.html)
 -   [RabbitMQ Best Practices](https://www.cloudamqp.com/blog/2017-12-29-part1-rabbitmq-best-practice.html)
 -   [RabbitMQ Best Practice for High Performance (High Throughput)](https://www.cloudamqp.com/blog/2018-01-08-part2-rabbitmq-best-practice-for-high-performance.html)
-
-## Consistency
-
-The RabbitMQ modules are designed to help you build consistent, SDK-like Consumers and Producers.
-
-```elixir
-defmodule CustomerProducer do
-  use RabbitMQ.Producer, exchange: "customer"
-
-  @doc """
-  Publishes an event routed via "customer.created".
-  """
-  def customer_created(customer_id) do
-    opts = [
-      content_type: "application/json",
-      correlation_id: UUID.uuid4(),
-      mandatory: true
-    ]
-
-    payload = Jason.encode!(%{version: "1.0.0", customer_id: customer_id})
-
-    publish(payload, "customer.created", opts)
-  end
-
-  @doc """
-  Publishes an event routed via "customer.created".
-  """
-  def customer_updated(customer_data) do
-    opts = [
-      content_type: "application/json",
-      correlation_id: UUID.uuid4(),
-      mandatory: true
-    ]
-
-    payload = Jason.encode!(%{version: "1.0.0", customer_data: customer_data})
-
-    publish(payload, "customer.created", opts)
-  end
-end
-```
 
 ## TODO
 
