@@ -56,6 +56,8 @@ The following modules are provided;
 | customer    | exchange    | customer/customer.created | queue            | customer.created | \[]       |
 | customer    | exchange    | customer/customer.updated | queue            | customer.updated | \[]       |
 
+ℹ️ As seen in the RabbitMQ Management dashboard.
+
 ![RabbitMQ Topology](assets/rabbitmq-topology.png)
 
 First, ensure you point to a valid `amqp_url` by adding this into your `config.exs`.
@@ -72,8 +74,15 @@ Let's define our `CustomerProducer` first. We will use this module to publish me
 
 ```elixir
 defmodule RabbitSample.CustomerProducer do
+  @moduledoc """
+  Publishes pre-configured events onto the "customer" exchange.
+  """
+
   use RabbitMQ.Producer, exchange: "customer", worker_count: 3
 
+  @doc """
+  Publishes an event routed via "customer.created".
+  """
   def customer_created(customer_id) when is_binary(customer_id) do
     opts = [
       content_type: "application/json",
@@ -86,6 +95,9 @@ defmodule RabbitSample.CustomerProducer do
     publish(payload, "customer.created", opts)
   end
 
+  @doc """
+  Publishes an event routed via "customer.updated".
+  """
   def customer_updated(updated_customer) when is_map(updated_customer) do
     opts = [
       content_type: "application/json",
@@ -106,7 +118,7 @@ To consume messages off the respective queues, we will define 2 separate consume
 
 ```elixir
 defmodule RabbitSample.CustomerCreatedConsumer do
-  use RabbitMQ.Consumer, queue: "customer/customer.created", worker_count: 2
+  use RabbitMQ.Consumer, queue: "customer/customer.created", worker_count: 2, prefetch_count: 3
 
   require Logger
 
@@ -119,7 +131,7 @@ end
 
 ```elixir
 defmodule RabbitSample.CustomerUpdatedConsumer do
-  use RabbitMQ.Consumer, queue: "customer/customer.updated", worker_count: 2
+  use RabbitMQ.Consumer, queue: "customer/customer.updated", worker_count: 2, prefetch_count: 6
 
   require Logger
 
@@ -164,10 +176,11 @@ The resulting application topology should look like this:
 Upon closer inspection using the RabbitMQ Management dashboard, we see that:
 
 a) each of our modules maintains its dedicated connection; and
+b) each of our modules' workers maintains its dedicated channel under the respective connection.
 
 ![Connections](assets/rabbitmq-connections.png)
 
-b) each of our modules' workers maintains its dedicated channel under the respective connection.
+ℹ️ Detailed view of how individual workers have set up their channels. Note that the **different prefetch counts** correspond to the configuration we provided in our Consumers, and that the Producer's 3 workers operate in **Confirm mode**.
 
 ![Channels](assets/rabbitmq-channels.png)
 
