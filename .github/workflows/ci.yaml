@@ -27,7 +27,7 @@ jobs:
 
     strategy:
       matrix:
-        elixir-version: [1.9.x, 1.10.x]
+        elixir-version: [1.9, 1.10]
         otp-version: [22.2]
 
     steps:
