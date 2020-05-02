@@ -96,8 +96,14 @@ defmodule RabbitSample.CustomerCreatedConsumer do
   require Logger
 
   def consume(payload, meta, channel) do
-    Logger.info("Customer #{payload} created.")
-    ack(channel, meta.delivery_tag)
+    %{delivery_tag: delivery_tag, redelivered: redelivered} = meta
+
+    try do
+      Logger.info("Customer created. Event data: #{payload}.")
+      ack(channel, delivery_tag)
+    rescue
+      _ -> nack(channel, delivery_tag, requeue: redelivered !== true)
+    end
   end
 end
 ```
@@ -109,8 +115,14 @@ defmodule RabbitSample.CustomerUpdatedConsumer do
   require Logger
 
   def consume(payload, meta, channel) do
-    Logger.info("Customer updated. Data: #{payload}.")
-    ack(channel, meta.delivery_tag)
+    %{delivery_tag: delivery_tag, redelivered: redelivered} = meta
+
+    try do
+      Logger.info("Customer updated. Event data: #{payload}.")
+      ack(channel, delivery_tag)
+    rescue
+      _ -> nack(channel, delivery_tag, requeue: redelivered !== true)
+    end
   end
 end
 ```
