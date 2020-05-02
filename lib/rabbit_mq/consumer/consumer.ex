@@ -217,8 +217,9 @@ defmodule RabbitMQ.Consumer do
 
   Only used by the module's `child_spec`.
   """
-  def start_link(init_arg, opts) do
-    GenServer.start_link(@this_module, init_arg, opts)
+  @spec start_link(map(), keyword()) :: GenServer.on_start()
+  def start_link(config, opts) do
+    GenServer.start_link(@this_module, config, opts)
   end
 
   ######################
