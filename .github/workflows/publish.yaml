@@ -13,6 +13,12 @@ jobs:
 
     runs-on: ubuntu-latest
 
+    services:
+      rabbitmq:
+        image: rabbitmq:3
+        ports:
+          - 5672:5672
+
     steps:
     - uses: actions/checkout@v2
     - uses: actions/setup-elixir@v1
