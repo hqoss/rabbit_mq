@@ -8,10 +8,21 @@
 ## Table of contents
 
 -   [Installation and Usage](#installation-and-usage)
+
 -   [Documentation](#documentation)
+
+-   [Sample usage](#sample-usage)
+
+    -   [Producers](#producers)
+    -   [Consumers](#consumers)
+    -   [Use under supervision tree](#use-under-supervision-tree)
+
 -   [Configuration](#configuration)
+
 -   [Balanced performance and reliability](#balanced-performance-and-reliability)
+
 -   [Consistency](#consistency)
+
 -   [TODO](#todo)
 
 ## Installation and Usage
@@ -35,6 +46,114 @@ The following modules are provided;
 -   [`RabbitMQ.Topology`](https://hexdocs.pm/rabbit_mq/RabbitMQ.Topology.html)
 -   [`RabbitMQ.Consumer`](https://hexdocs.pm/rabbit_mq/RabbitMQ.Consumer.html)
 -   [`RabbitMQ.Producer`](https://hexdocs.pm/rabbit_mq/RabbitMQ.Producer.html)
+
+## Sample usage
+
+⚠️ The following examples assume you've already set up your (RabbitMQ) routing topology as shown below.
+
+| source_name | source_kind | destination_name          | destination_kind | routing_key      | arguments |
+| ----------- | ----------- | ------------------------- | ---------------- | ---------------- | --------- |
+| customer    | exchange    | customer/customer.created | queue            | customer.created | \[]       |
+| customer    | exchange    | customer/customer.updated | queue            | customer.updated | \[]       |
+
+![RabbitMQ Topology](assets/rabbitmq-topology.png)
+
+First, ensure you point to a valid `amqp_url` by adding this into your `config.exs`.
+
+```elixir
+config :rabbit_mq, :amqp_url, "amqp://guest:guest@localhost:5672"
+```
+
+ℹ️ See [docker-compose.yaml](docker-compose.yaml) for a sample Docker Compose set up.
+
+### Producers
+
+Let's define our `CustomerProducer` first. We will use this module to publish messages onto the `"customer"` exchange.
+
+```elixir
+defmodule RabbitSample.CustomerProducer do
+  use RabbitMQ.Producer, exchange: "customer", worker_count: 3
+
+  def customer_created(customer_id) when is_binary(customer_id) do
+    opts = [
+      content_type: "application/json",
+      correlation_id: UUID.uuid4(),
+      mandatory: true
+    ]
+
+    payload = Jason.encode!(%{v: "1.0.0", customer_id: customer_id})
+
+    publish(payload, "customer.created", opts)
+  end
+
+  def customer_updated(updated_customer) when is_map(updated_customer) do
+    opts = [
+      content_type: "application/json",
+      correlation_id: UUID.uuid4(),
+      mandatory: true
+    ]
+
+    payload = Jason.encode!(%{v: "1.0.0", customer_data: updated_customer})
+
+    publish(payload, "customer.updated", opts)
+  end
+end
+```
+
+### Consumers
+
+To consume messages off the respective queues, we will define 2 separate consumers.
+
+```elixir
+defmodule RabbitSample.CustomerCreatedConsumer do
+  use RabbitMQ.Consumer, queue: "customer/customer.created", worker_count: 2
+
+  require Logger
+
+  def consume(payload, meta, channel) do
+    Logger.info("Customer #{payload} created.")
+    ack(channel, meta.delivery_tag)
+  end
+end
+```
+
+```elixir
+defmodule RabbitSample.CustomerUpdatedConsumer do
+  use RabbitMQ.Consumer, queue: "customer/customer.updated", worker_count: 2
+
+  require Logger
+
+  def consume(payload, meta, channel) do
+    Logger.info("Customer updated. Data: #{payload}.")
+    ack(channel, meta.delivery_tag)
+  end
+end
+```
+
+### Use under supervision tree
+
+And finally, we will start our application.
+
+```elixir
+defmodule RabbitSample.Application do
+  use Application
+
+  def start(_type, _args) do
+    children = [
+      RabbitSample.CustomerProducer,
+      RabbitSample.CustomerCreatedConsumer,
+      RabbitSample.CustomerUpdatedConsumer
+    ]
+
+    opts = [strategy: :one_for_one, name: RabbitSample.Supervisor]
+    Supervisor.start_link(children, opts)
+  end
+end
+```
+
+The resulting application topology should look like this:
+
+![Application Topology](assets/application-topology.png)
 
 ## Configuration
 
