@@ -151,9 +151,25 @@ defmodule RabbitSample.Application do
 end
 ```
 
+Using `iex`;
+
+```bash
+iex -S mix
+```
+
 The resulting application topology should look like this:
 
 ![Application Topology](assets/application-topology.png)
+
+Upon closer inspection using the RabbitMQ Management dashboard, we see that:
+
+a) each of our modules maintains its dedicated connection; and
+
+![Connections](assets/rabbitmq-connections.png)
+
+b) each of our modules' workers maintains its dedicated channel under the respective connection.
+
+![Channels](assets/rabbitmq-channels.png)
 
 ## Configuration
 
