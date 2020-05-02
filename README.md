@@ -56,19 +56,17 @@ The following modules are provided;
 | customer    | exchange    | customer/customer.created | queue            | customer.created | \[]       |
 | customer    | exchange    | customer/customer.updated | queue            | customer.updated | \[]       |
 
-ℹ️ As seen in the RabbitMQ Management dashboard.
+As seen in the RabbitMQ Management dashboard.
 
 ![RabbitMQ Topology](assets/rabbitmq-topology.png)
 
 First, ensure you point to a valid `amqp_url` by configuring `:rabbit_mq` correctly in your `config.exs`.
 
-ℹ️ For advanced configuration options, consult the [Configuration section](#configuration).
-
 ```elixir
 config :rabbit_mq, :amqp_url, "amqp://guest:guest@localhost:5672"
 ```
 
-ℹ️ See [docker-compose.yaml](docker-compose.yaml) for a sample Docker Compose set up.
+ℹ️ For advanced configuration options, consult the [Configuration section](#configuration).
 
 ### Producers
 
@@ -147,6 +145,8 @@ end
 ### Use under supervision tree
 
 And finally, we will start our application.
+
+ℹ️ To run RabbitMQ locally, see our [docker-compose.yaml](docker-compose.yaml) for a sample Docker Compose set up.
 
 ```elixir
 defmodule RabbitSample.Application do
