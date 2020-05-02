@@ -80,7 +80,7 @@ defmodule RabbitMQ.Consumer do
   3. `consume/3` is passed as a callback to each worker when `start_link/1` is called.
   4. _If_ an exclusive queue is requested, it will be declared and bound to the Consumer.
   5. Each worker starts consuming from the queue provided, calls `consume/3` for each message consumed.
-  6. `ack/2`, `nack/2`, and `reject/2` become automatically available.
+  6. `ack/2`, `ack/3`, `nack/2`, `nack/3`, `reject/2`, and `reject/3` become automatically available.
 
   `consume/3` needs to be defined with the following signature;
 
@@ -116,6 +116,8 @@ defmodule RabbitMQ.Consumer do
     quote do
       alias AMQP.{Basic, Channel}
       alias RabbitMQ.Consumer
+
+      import Basic, only: [ack: 2, ack: 3, nack: 2, nack: 3, reject: 2, reject: 3]
 
       require Logger
 
@@ -168,14 +170,6 @@ defmodule RabbitMQ.Consumer do
           shutdown: :brutal_kill
         }
       end
-
-      ###########################
-      # Useful Helper Functions #
-      ###########################
-
-      defdelegate ack(channel, tag), to: Basic
-      defdelegate nack(channel, tag), to: Basic
-      defdelegate reject(channel, tag), to: Basic
 
       #####################
       # Private Functions #
