@@ -42,10 +42,7 @@ jobs:
     - name: Compile source
       run: mix compile
 
-    - name: Run Tests
-      run: mix test
-
-    - name: Produce test coverage
+    - name: Run tests and publish test coverage
       run: mix coveralls.post
       env:
         COVERALLS_REPO_TOKEN: ${{ secrets.COVERALLS_REPO_TOKEN }}
