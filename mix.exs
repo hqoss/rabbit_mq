@@ -4,7 +4,7 @@ defmodule MQ.MixProject do
   def project do
     [
       app: :rabbit_mq,
-      version: "0.0.0-alpha-4",
+      version: "0.0.0-alpha-8",
       elixir: "~> 1.9",
       start_permanent: Mix.env() == :prod,
       aliases: aliases(),
@@ -22,8 +22,7 @@ defmodule MQ.MixProject do
   # Run "mix help compile.app" to learn about applications.
   def application do
     [
-      extra_applications: [:lager, :logger, :amqp],
-      mod: {RabbitMQ.Application, []}
+      extra_applications: [:lager, :logger, :amqp]
     ]
   end
 
@@ -82,10 +81,9 @@ defmodule MQ.MixProject do
       {:uuid, "~> 1.1"},
       # Dev/Test-only deps
       {:ex_check, ">= 0.0.0", only: :dev, runtime: false},
-      {:credo, ">= 0.0.0", only: :dev, runtime: false},
-      {:dialyxir, ">= 0.0.0", only: :dev, runtime: false},
-      {:ex_doc, ">= 0.0.0", only: :dev, runtime: false},
-      {:sobelow, ">= 0.0.0", only: :dev, runtime: false}
+      {:credo, "~> 1.4", only: :dev, runtime: false},
+      {:dialyxir, "~> 1.0", only: :dev, runtime: false},
+      {:ex_doc, ">= 0.0.0", only: :dev, runtime: false}
     ]
   end
 

@@ -55,7 +55,7 @@ defmodule RabbitMQ.Consumer do
   * `:queue`;
       the name of the queue from which the Consumer should start consuming.
       **For exclusive queues, please see the Exclusive Queues section further below.**
-      Defaults to `""`.
+      **Required**.
   * `:worker_count`;
       number of workers to be spawned.
       Cannot be greater than `:max_channels_per_connection` set in config.
@@ -108,9 +108,9 @@ defmodule RabbitMQ.Consumer do
       require Logger
 
       @prefetch_count unquote(Keyword.get(opts, :prefetch_count, 10))
-      @queue unquote(Keyword.get(opts, :queue, ""))
+      @queue unquote(Keyword.fetch!(opts, :queue))
       @worker_count unquote(Keyword.get(opts, :worker_count, 3))
-      @max_workers Application.get_env(:rabbit_mq, :max_channels_per_connection)
+      @max_workers Application.compile_env(:rabbit_mq, :max_channels_per_connection, 8)
       @this_module __MODULE__
 
       if @worker_count > @max_workers do
@@ -175,10 +175,6 @@ defmodule RabbitMQ.Consumer do
 
   use GenServer
 
-  @amqp_url Application.fetch_env!(:rabbit_mq, :amqp_url)
-  @heartbeat_interval_sec Application.fetch_env!(:rabbit_mq, :heartbeat_interval_sec)
-  @reconnect_interval_ms Application.fetch_env!(:rabbit_mq, :reconnect_interval_ms)
-  @max_channels Application.fetch_env!(:rabbit_mq, :max_channels_per_connection)
   @this_module __MODULE__
 
   defmodule State do
@@ -278,9 +274,9 @@ defmodule RabbitMQ.Consumer do
   #####################
 
   defp connect do
-    opts = [channel_max: @max_channels, heartbeat: @heartbeat_interval_sec]
+    opts = [channel_max: max_channels(), heartbeat: heartbeat_interval_sec()]
 
-    @amqp_url
+    amqp_url()
     |> Connection.open(opts)
     |> case do
       {:ok, connection} ->
@@ -290,7 +286,7 @@ defmodule RabbitMQ.Consumer do
 
       {:error, error} ->
         Logger.error("Failed to connect to broker due to #{inspect(error)}. Retrying...")
-        :timer.sleep(@reconnect_interval_ms)
+        :timer.sleep(reconnect_interval_ms())
         connect()
     end
   end
@@ -333,4 +329,9 @@ defmodule RabbitMQ.Consumer do
 
     {index, pid, config}
   end
+
+  defp amqp_url, do: Application.fetch_env!(:rabbit_mq, :amqp_url)
+  defp heartbeat_interval_sec, do: Application.get_env(:rabbit_mq, :heartbeat_interval_sec, 30)
+  defp reconnect_interval_ms, do: Application.get_env(:rabbit_mq, :reconnect_interval_ms, 2500)
+  defp max_channels, do: Application.get_env(:rabbit_mq, :max_channels_per_connection, 8)
 end

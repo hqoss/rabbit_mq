@@ -74,8 +74,6 @@ defmodule RabbitMQ.Topology do
       # i.e., with an exit reason other than `:normal`, `:shutdown`, or `{:shutdown, term}`.
       use GenServer, restart: :transient
 
-      @amqp_url Application.get_env(:rabbit_mq, :amqp_url)
-
       @exchanges unquote(Keyword.get(opts, :exchanges, []))
       @this_module __MODULE__
 
@@ -93,7 +91,7 @@ defmodule RabbitMQ.Topology do
 
       @impl true
       def init(_arg) do
-        with {:ok, connection} <- Connection.open(@amqp_url),
+        with {:ok, connection} <- Connection.open(amqp_url()),
              {:ok, channel} <- Channel.open(connection) do
           state = Enum.flat_map(@exchanges, &declare_exchange(&1, channel))
 
@@ -147,6 +145,8 @@ defmodule RabbitMQ.Topology do
         Queue.bind(channel, queue, exchange, routing_key: routing_key)
         {queue, exchange, routing_key}
       end
+
+      defp amqp_url, do: Application.fetch_env!(:rabbit_mq, :amqp_url)
     end
   end
 end
