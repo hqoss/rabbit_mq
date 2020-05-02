@@ -9,20 +9,19 @@
 
 -   [Installation and Usage](#installation-and-usage)
 -   [Documentation](#documentation)
+-   [Configuration](#configuration)
 -   [Balanced performance and reliability](#balanced-performance-and-reliability)
 -   [Consistency](#consistency)
 -   [TODO](#todo)
 
 ## Installation and Usage
 
-The easiest way to add `rabbit_mq` to your project is by using Mix.
-
 Add `:rabbit_mq` as a dependency to your project's `mix.exs`:
 
 ```elixir
 defp deps do
   [
-    {:rabbit_mq, "~> 1.0"}
+    {:rabbit_mq, "~> 0.0.0-alpha-8"}
   ]
 end
 ```
@@ -36,6 +35,27 @@ The following modules are provided;
 -   [`RabbitMQ.Topology`](https://hexdocs.pm/rabbit_mq/RabbitMQ.Topology.html)
 -   [`RabbitMQ.Consumer`](https://hexdocs.pm/rabbit_mq/RabbitMQ.Consumer.html)
 -   [`RabbitMQ.Producer`](https://hexdocs.pm/rabbit_mq/RabbitMQ.Producer.html)
+
+## Configuration
+
+The following can be configured.
+
+```elixir
+config :rabbit_mq,
+  amqp_url: "amqp://guest:guest@localhost:5672",
+  heartbeat_interval_sec: 60,
+  reconnect_interval_ms: 2500,
+  max_channels_per_connection: 16
+```
+
+-   `amqp_url`; **required**, the broker URL.
+-   `heartbeat_interval_sec`; defines after what period of time the peer TCP connection should be considered unreachable. Defaults to `30`.
+-   `reconnect_interval_ms`; the interval before another attempt to re-connect to the broker should occur. Defaults to `2500`.
+-   `max_channels_per_connection`; maximum number of channels per connection. Also determines the maximum number of workers per Producer/Consumer module. Defaults to `8`.
+
+⚠️ Please consult the [Channels Resource Usage](https://www.rabbitmq.com/channels.html#resource-usage) guide to understand how to best configure `:max_channels_per_connection`.
+
+⚠️ Please consult the [Detecting Dead TCP Connections with Heartbeats and TCP Keepalives](https://www.rabbitmq.com/heartbeats.html) guide to understand how to best configure `:heartbeat_interval_sec`.
 
 ## Balanced performance and reliability
 

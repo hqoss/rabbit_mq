@@ -1,11 +1,6 @@
 # Configuration
 
-The following options must be configured.
-
--   `amqp_url`; **required**, the broker URL.
--   `heartbeat_interval_sec`; **required**, defines after what period of time the peer TCP connection should be considered unreachable.
--   `reconnect_interval_ms`; **required**, the interval before another attempt to re-connect to the broker should occur.
--   `max_channels_per_connection`; **required**, maximum number of channels per connection. Also determines the maximum number of workers per Producer/Consumer module.
+The following can be configured.
 
 ```elixir
 config :rabbit_mq,
@@ -14,6 +9,11 @@ config :rabbit_mq,
   reconnect_interval_ms: 2500,
   max_channels_per_connection: 16
 ```
+
+-   `amqp_url`; **required**, the broker URL.
+-   `heartbeat_interval_sec`; defines after what period of time the peer TCP connection should be considered unreachable. Defaults to `30`.
+-   `reconnect_interval_ms`; the interval before another attempt to re-connect to the broker should occur. Defaults to `2500`.
+-   `max_channels_per_connection`; maximum number of channels per connection. Also determines the maximum number of workers per Producer/Consumer module. Defaults to `8`.
 
 ⚠️ Please consult the [Channels Resource Usage](https://www.rabbitmq.com/channels.html#resource-usage) guide to understand how to best configure `:max_channels_per_connection`.
 
