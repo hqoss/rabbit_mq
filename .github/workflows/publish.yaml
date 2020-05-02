@@ -39,4 +39,4 @@ jobs:
     - name: Publish package
       run: mix hex.publish --yes
       env:
-        CODACY_PROJECT_TOKEN: ${{ secrets.CODACY_PROJECT_TOKEN }}
+        HEX_API_KEY: ${{ secrets.HEX_API_KEY }}
