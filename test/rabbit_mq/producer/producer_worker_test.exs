@@ -37,21 +37,6 @@ defmodule RabbitMQTest.Producer.Worker do
   end
 
   setup %{channel: channel, queue: queue} do
-    # Starts the Producer Worker.
-    assert {:ok, pid} =
-             start_supervised(
-               {Worker,
-                %{
-                  channel: channel,
-                  confirm_type: :async
-                }}
-             )
-
-    assert {:ok, consumer_tag} = Basic.consume(channel, queue)
-
-    # This will always be the first message received by the process.
-    assert_receive({:basic_consume_ok, %{consumer_tag: ^consumer_tag}})
-
     on_exit(fn ->
       # Ensure there are no messages in the queue as the next test is about to start.
       assert true = Queue.empty?(channel, queue)
@@ -59,19 +44,31 @@ defmodule RabbitMQTest.Producer.Worker do
 
     [
       channel: channel,
-      consumer_tag: consumer_tag,
-      correlation_id: UUID.uuid4(),
-      producer_pid: pid
+      correlation_id: UUID.uuid4()
     ]
   end
 
   describe "#{__MODULE__}" do
     test "is capable of publishing correctly configured payloads", %{
       channel: channel,
-      consumer_tag: consumer_tag,
       correlation_id: correlation_id,
-      producer_pid: pid
+      queue: queue
     } do
+      assert {:ok, pid} =
+               start_supervised(
+                 {Worker,
+                  %{
+                    channel: channel,
+                    confirm_type: :async
+                  }}
+               )
+
+      # This process will now start receiving events.
+      assert {:ok, consumer_tag} = Basic.consume(channel, queue)
+
+      # This will always be the first message received by the process.
+      assert_receive({:basic_consume_ok, %{consumer_tag: ^consumer_tag}})
+
       opts = [correlation_id: correlation_id]
 
       assert {:ok, seq_no} =
@@ -87,6 +84,7 @@ defmodule RabbitMQTest.Producer.Worker do
          }}
       )
 
+      # Unsubscribe.
       Basic.cancel(channel, consumer_tag)
 
       # This will always be the last message received by the process.
@@ -98,12 +96,27 @@ defmodule RabbitMQTest.Producer.Worker do
 
     test "fails to publish if correlation_id is not provided in opts", %{
       channel: channel,
-      consumer_tag: consumer_tag,
-      producer_pid: pid
+      queue: queue
     } do
+      assert {:ok, pid} =
+               start_supervised(
+                 {Worker,
+                  %{
+                    channel: channel,
+                    confirm_type: :async
+                  }}
+               )
+
+      # This process will now start receiving events.
+      assert {:ok, consumer_tag} = Basic.consume(channel, queue)
+
+      # This will always be the first message received by the process.
+      assert_receive({:basic_consume_ok, %{consumer_tag: ^consumer_tag}})
+
       assert {:error, :correlation_id_missing} =
                GenServer.call(pid, {:publish, @exchange, "routing_key", "data", []})
 
+      # Unsubscribe
       Basic.cancel(channel, consumer_tag)
 
       # This will always be the last message received by the process.
@@ -111,6 +124,75 @@ defmodule RabbitMQTest.Producer.Worker do
 
       # Ensure no further messages are received.
       refute_receive(_)
+    end
+
+    test ":basic_ack deletes outstanding confirm", %{channel: channel} do
+      assert {:ok, pid} =
+               start_supervised(
+                 {Worker,
+                  %{
+                    channel: channel,
+                    confirm_type: :async
+                  }}
+               )
+
+      assert %Worker.State{
+               outstanding_confirms: outstanding_confirms
+             } = :sys.get_state(pid)
+
+      assert [] = :ets.tab2list(outstanding_confirms)
+
+      :ets.insert(outstanding_confirms, {0, "payload_0"})
+      :ets.insert(outstanding_confirms, {1, "payload_1"})
+      :ets.insert(outstanding_confirms, {2, "payload_2"})
+
+      assert [
+               {0, "payload_0"},
+               {1, "payload_1"},
+               {2, "payload_2"}
+             ] = :ets.tab2list(outstanding_confirms)
+
+      send(pid, {:basic_ack, 1, false})
+
+      :timer.sleep(5)
+
+      assert [
+               {0, "payload_0"},
+               {2, "payload_2"}
+             ] = :ets.tab2list(outstanding_confirms)
+    end
+
+    test ":basic_ack deletes multiple outstanding confirms", %{channel: channel} do
+      assert {:ok, pid} =
+               start_supervised(
+                 {Worker,
+                  %{
+                    channel: channel,
+                    confirm_type: :async
+                  }}
+               )
+
+      assert %Worker.State{
+               outstanding_confirms: outstanding_confirms
+             } = :sys.get_state(pid)
+
+      assert [] = :ets.tab2list(outstanding_confirms)
+
+      :ets.insert(outstanding_confirms, {0, "payload_0"})
+      :ets.insert(outstanding_confirms, {1, "payload_1"})
+      :ets.insert(outstanding_confirms, {2, "payload_2"})
+
+      assert [
+               {0, "payload_0"},
+               {1, "payload_1"},
+               {2, "payload_2"}
+             ] = :ets.tab2list(outstanding_confirms)
+
+      send(pid, {:basic_ack, 2, true})
+
+      :timer.sleep(5)
+
+      assert [] = :ets.tab2list(outstanding_confirms)
     end
   end
 end

@@ -49,7 +49,7 @@ defmodule RabbitMQ.Producer.Worker do
     # The corresponding channel and async handler will both be closed.
     Process.flag(:trap_exit, true)
 
-    with table <- :ets.new(:outstanding_confirms, [:protected, :ordered_set]),
+    with table <- :ets.new(:outstanding_confirms, [:public, :ordered_set]),
          :ok <- Confirm.select(channel),
          :ok <- Confirm.register_handler(channel, self()) do
       {:ok, %State{channel: channel, outstanding_confirms: table}}
