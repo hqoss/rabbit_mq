@@ -14,8 +14,12 @@
 -   [Sample usage](#sample-usage)
 
     -   [Producers](#producers)
+
     -   [Consumers](#consumers)
+
     -   [Use under supervision tree](#use-under-supervision-tree)
+
+        -   [Produce and Consume messages](#produce-and-consume-messages)
 
 -   [Configuration](#configuration)
 
@@ -196,6 +200,26 @@ Upon closer inspection using the RabbitMQ Management dashboard, we see that:
 
 ![Channels](assets/rabbitmq-channels.png)
 
+#### Produce and Consume messages
+
+```elixir
+iex(1)> RabbitSample.CustomerProducer.customer_created(UUID.uuid4())
+{:ok, 1}
+
+14:07:22.058 application=rabbit_mq domain=elixir file=lib/rabbit_mq/producer/producer_worker.ex function=handle_info/2 line=84 mfa=RabbitMQ.Producer.Worker.handle_info/2 module=RabbitMQ.Producer.Worker pid=<0.317.0> [debug] Received ACK of 1.
+
+14:07:22.058 application=rabbit_sample domain=elixir file=lib/rabbit_sample/customer_created_consumer.ex function=consume/3 line=7 mfa=RabbitSample.CustomerCreatedConsumer.consume/3 module=RabbitSample.CustomerCreatedConsumer pid=<0.378.0> [info]  Customer {"customer_id":"e79eae21-b8a4-4907-9795-5aa633a9d3df","v":"1.0.0"} created.
+
+iex(2)> RabbitSample.CustomerProducer.customer_updated(%{id: UUID.uuid4()})
+{:ok, 1}
+
+14:07:39.247 application=rabbit_sample domain=elixir file=lib/rabbit_sample/customer_updated_consumer.ex function=consume/3 line=7 mfa=RabbitSample.CustomerUpdatedConsumer.consume/3 module=RabbitSample.CustomerUpdatedConsumer pid=<0.381.0> [info]  Customer updated. Data: {"customer_data":{"id":"eee24a7e-ce7b-4eec-8d5f-47ee98f1ca6f"},"v":"1.0.0"}.
+
+14:07:39.247 application=rabbit_mq domain=elixir file=lib/rabbit_mq/producer/producer_worker.ex function=handle_info/2 line=84 mfa=RabbitMQ.Producer.Worker.handle_info/2 module=RabbitMQ.Producer.Worker pid=<0.323.0> [debug] Received ACK of 1.
+
+iex(3)>
+```
+
 ## Configuration
 
 The following options can be configured.
@@ -244,3 +268,4 @@ This has been possible through
 A quick and dirty tech-debt tracker, used in conjunction with Issues.
 
 -   [ ] Add support for notifying the parent producer when a publisher `nack` occurs.
+-   [ ] Add testing guide
