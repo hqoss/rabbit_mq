@@ -16,7 +16,7 @@ defmodule RabbitMQ.Consumer do
         require Logger
 
         def consume(payload, meta, channel) do
-          Logger.info("Customer #{payload} created.")
+          Logger.info("Customer \#{payload} created.")
           ack(channel, meta.delivery_tag)
         end
       end
@@ -27,7 +27,7 @@ defmodule RabbitMQ.Consumer do
         require Logger
 
         def consume(payload, meta, channel) do
-          Logger.info("Customer updated. Data: #{payload}.")
+          Logger.info("Customer updated. Data: \#{payload}.")
           ack(channel, meta.delivery_tag)
         end
       end
