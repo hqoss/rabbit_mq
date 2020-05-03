@@ -15,6 +15,10 @@
 
 -   [Sample usage](#sample-usage)
 
+    -   [Establish routing topology](#establish-routing-topology)
+
+    -   [Minimal configuration](#minimal-configuration)
+
     -   [Producers](#producers)
 
     -   [Consumers](#consumers)
@@ -61,18 +65,35 @@ The following modules are provided;
 
 ## Sample usage
 
-⚠️ The following examples assume you've already set up your (RabbitMQ) routing topology as shown below.
+### Establish routing topology
 
-ℹ️ Consult the `RabbitMQ.Topology` module to learn how to quickly establish desired routing topology.
+⚠️ All examples in this guide assume you've already set up your (RabbitMQ) routing topology as shown below.
 
 | source_name | source_kind | destination_name          | destination_kind | routing_key      | arguments |
 | ----------- | ----------- | ------------------------- | ---------------- | ---------------- | --------- |
 | customer    | exchange    | customer/customer.created | queue            | customer.created | \[]       |
 | customer    | exchange    | customer/customer.updated | queue            | customer.updated | \[]       |
 
-As seen in the RabbitMQ Management dashboard:
+```bash
+# Declare the customer exchange
+rabbitmqadmin declare exchange name=customer type=topic durable=true
 
-![RabbitMQ Topology](assets/rabbitmq-topology.png)
+# Declare and bind the customer/customer.created queue
+rabbitmqadmin declare queue name=customer/customer.created durable=true
+rabbitmqadmin declare binding source=customer destination=customer/customer.created routing_key=customer.created
+
+# Declare and bind the customer/customer.updated queue
+rabbitmqadmin declare queue name=customer/customer.updated durable=true
+rabbitmqadmin declare binding source=customer destination=customer/customer.updated routing_key=customer.updated
+```
+
+ℹ️ You can also use the `RabbitMQ.Topology` module to quickly establish desired routing topology via your application.
+
+<!-- As seen in the RabbitMQ Management dashboard:
+
+![RabbitMQ Topology](assets/rabbitmq-topology.png) -->
+
+### Minimal configuration
 
 First, ensure you point to a valid `amqp_url` by configuring `:rabbit_mq` in your `config.exs`.
 
