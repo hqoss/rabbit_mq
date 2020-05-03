@@ -8,7 +8,9 @@ defmodule RabbitMQ.Consumer do
 
   ℹ️ The following example assumes that the `"customer/customer.updated"` queue already exists.
 
-  First, define your Consumer(s):
+  First, define your Consumer(s).
+
+  To consume off `"customer/customer.created"`:
 
       defmodule RabbitSample.CustomerCreatedConsumer do
         use RabbitMQ.Consumer, queue: "customer/customer.created", worker_count: 2, prefetch_count: 3
@@ -20,6 +22,8 @@ defmodule RabbitMQ.Consumer do
           ack(channel, meta.delivery_tag)
         end
       end
+
+  To consume off `"customer/customer.updated"`:
 
       defmodule RabbitSample.CustomerUpdatedConsumer do
         use RabbitMQ.Consumer, queue: "customer/customer.updated", worker_count: 2, prefetch_count: 6
@@ -87,9 +91,9 @@ defmodule RabbitMQ.Consumer do
       @type payload :: String.t()
       @type meta :: map()
       @type channel :: AMQP.Channel.t()
-      @type result :: :ok | {:error, :retry} | {:error, term()}
+      @type result :: term()
 
-      consume(payload(), meta(), channel()) :: result()
+      @callback consume(payload(), meta(), channel()) :: result()
 
   ### Exclusive queues
 
@@ -126,7 +130,7 @@ defmodule RabbitMQ.Consumer do
       @worker_count unquote(Keyword.get(opts, :worker_count, 3))
       @this_module __MODULE__
 
-      @callback consume(String.t(), map(), Channel.t()) :: term()
+      @behaviour Consumer
 
       ##############
       # Public API #
@@ -187,6 +191,13 @@ defmodule RabbitMQ.Consumer do
   use GenServer
 
   @this_module __MODULE__
+
+  @type payload :: String.t()
+  @type meta :: map()
+  @type channel :: Channel.t()
+  @type result :: term()
+
+  @callback consume(payload(), meta(), channel()) :: result()
 
   defmodule State do
     @moduledoc """
