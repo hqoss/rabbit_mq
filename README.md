@@ -74,6 +74,8 @@ The following modules are provided;
 | customer    | exchange    | customer/customer.created | queue            | customer.created | \[]       |
 | customer    | exchange    | customer/customer.updated | queue            | customer.updated | \[]       |
 
+You can run these commands against your `rabbitmq` instance to establish the desired routing topology.
+
 ```bash
 # Declare the customer exchange
 rabbitmqadmin declare exchange name=customer type=topic durable=true
@@ -89,9 +91,9 @@ rabbitmqadmin declare binding source=customer destination=customer/customer.upda
 
 ℹ️ You can also use the `RabbitMQ.Topology` module to quickly establish desired routing topology via your application.
 
-<!-- As seen in the RabbitMQ Management dashboard:
+As seen in the RabbitMQ Management dashboard:
 
-![RabbitMQ Topology](assets/rabbitmq-topology.png) -->
+![RabbitMQ Topology](assets/rabbitmq-topology.png)
 
 ### Minimal configuration
 
