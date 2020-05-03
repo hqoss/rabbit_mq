@@ -749,6 +749,7 @@ This has been possible through
 
 A quick and dirty tech-debt tracker, used in conjunction with Issues.
 
--   [ ] Add support for notifying the parent producer when a publisher `nack` occurs.
--   [ ] Increase test coverage to as close to 100% as possible
--   [ ] Add testing guide
+-   [ ] Add support for individual and batch publisher confirms.
+-   [ ] Add support for publishing without confirm mode.
+-   [ ] Increase test coverage to as close to 100% as possible.
+-   [ ] Update testing guide.
