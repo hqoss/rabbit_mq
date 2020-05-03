@@ -50,7 +50,7 @@ First, ensure you point to a valid `amqp_url` by configuring `:rabbit_mq` in you
 config :rabbit_mq, :amqp_url, "amqp://guest:guest@localhost:5672"
 ```
 
-For advanced configuration options, consult the [Configuration section](#configuration).
+For advanced configuration options, consult the [Configuration section](#advanced-configuration).
 
 ### Producers
 
