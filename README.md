@@ -23,11 +23,11 @@
 
     -   [Consumers](#consumers)
 
-    -   [Use under supervision tree](#use-under-supervision-tree)
+    -   [Start under supervision tree](#start-under-supervision-tree)
 
         -   [Produce and Consume messages](#produce-and-consume-messages)
 
--   [Configuration](#configuration)
+-   [Advanced configuration](#advanced-configuration)
 
     -   [Excessive logging](#excessive-logging)
     -   [Lager conflicts with Elixir logger](#lager-conflicts-with-elixir-logger)
@@ -91,7 +91,7 @@ rabbitmqadmin declare binding source=customer destination=customer/customer.upda
 
 ℹ️ You can also use the `RabbitMQ.Topology` module to quickly establish desired routing topology via your application.
 
-As seen in the RabbitMQ Management dashboard:
+This is what the result should look like in the RabbitMQ Management dashboard:
 
 ![RabbitMQ Topology](assets/rabbitmq-topology.png)
 
@@ -99,11 +99,13 @@ As seen in the RabbitMQ Management dashboard:
 
 First, ensure you point to a valid `amqp_url` by configuring `:rabbit_mq` in your `config.exs`.
 
+ℹ️ To run RabbitMQ locally, see our [docker-compose.yaml](docker-compose.yaml) for a sample Docker Compose set up.
+
 ```elixir
 config :rabbit_mq, :amqp_url, "amqp://guest:guest@localhost:5672"
 ```
 
-ℹ️ For advanced configuration options, consult the [Configuration section](#configuration).
+For advanced configuration options, consult the [Configuration section](#configuration).
 
 ### Producers
 
@@ -158,10 +160,6 @@ defmodule RabbitSample.CustomerProducer do
 end
 ```
 
-⚠️ Please note that all Producer workers implement "reliable publishing". Each Producer worker handles its publisher confirms _asynchronously_, striking a delicate balance between performance and reliability.
-
-To understand why this is important, please refer to the [reliable publishing implementation guide](https://www.rabbitmq.com/tutorials/tutorial-seven-java.html).
-
 ℹ️ In the unlikely event of an unexpected Publisher `nack`, your server will be notified via the `on_unexpected_nack/1` callback, letting you handle such exceptions in any way you see fit.
 
 ### Consumers
@@ -212,13 +210,9 @@ end
 
 ⚠️ Please note that automatic message acknowledgement is **disabled** in `rabbit_mq`, therefore it's _your_ responsibility to ensure messages are `ack`'d or `nack`'d.
 
-ℹ️ Please consult the [Consumer Acknowledgement Modes and Data Safety Considerations](https://www.rabbitmq.com/confirms.html#acknowledgement-modes) for more details.
-
-### Use under supervision tree
+### Start under supervision tree
 
 And finally, we will start our application.
-
-ℹ️ To run RabbitMQ locally, see our [docker-compose.yaml](docker-compose.yaml) for a sample Docker Compose set up.
 
 ```elixir
 defmodule RabbitSample.Application do
@@ -260,7 +254,7 @@ Upon closer inspection using the RabbitMQ Management dashboard, we see that:
 
 #### Produce and Consume messages
 
-ℹ️ Due to the asynchronous nature of the application, the order of outputs in the console may vary.
+⚠️ Due to the asynchronous nature of the application, the order of outputs in the console may vary.
 
 ```elixir
 iex(1)> RabbitSample.CustomerProducer.customer_created(UUID.uuid4())
@@ -280,7 +274,7 @@ iex(2)> RabbitSample.CustomerProducer.customer_updated(%{id: UUID.uuid4()})
 iex(3)>
 ```
 
-## Configuration
+## Advanced configuration
 
 The following options can be configured.
 
@@ -297,9 +291,10 @@ config :rabbit_mq,
 -   `reconnect_interval_ms`; the interval before another attempt to re-connect to the broker should occur. Defaults to `2500`.
 -   `max_channels_per_connection`; maximum number of channels per connection. Also determines the maximum number of workers per Producer/Consumer module. Defaults to `8`.
 
-⚠️ Please consult the [Channels Resource Usage](https://www.rabbitmq.com/channels.html#resource-usage) guide to understand how to best configure `:max_channels_per_connection`.
+⚠️ Please consult the following guides to understand how to best configure `:max_channels_per_connection` and `:heartbeat_interval_sec` respectively.
 
-⚠️ Please consult the [Detecting Dead TCP Connections with Heartbeats and TCP Keepalives](https://www.rabbitmq.com/heartbeats.html) guide to understand how to best configure `:heartbeat_interval_sec`.
+-   [Channels Resource Usage](https://www.rabbitmq.com/channels.html#resource-usage)
+-   [Detecting Dead TCP Connections with Heartbeats and TCP Keepalives](https://www.rabbitmq.com/heartbeats.html)
 
 ### Excessive logging
 
