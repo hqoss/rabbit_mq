@@ -59,7 +59,8 @@ defmodule RabbitMQTest.Producer.Worker do
                  {Worker,
                   %{
                     channel: channel,
-                    confirm_type: :async
+                    confirm_type: :async,
+                    nack_cb: fn _ -> :ok end
                   }}
                )
 
@@ -103,7 +104,8 @@ defmodule RabbitMQTest.Producer.Worker do
                  {Worker,
                   %{
                     channel: channel,
-                    confirm_type: :async
+                    confirm_type: :async,
+                    nack_cb: fn _ -> :ok end
                   }}
                )
 
@@ -126,142 +128,148 @@ defmodule RabbitMQTest.Producer.Worker do
       refute_receive(_)
     end
 
-    test ":basic_ack deletes a single outstanding confirm", %{channel: channel} do
-      assert {:ok, pid} =
-               start_supervised(
-                 {Worker,
-                  %{
-                    channel: channel,
-                    confirm_type: :async
-                  }}
-               )
+    test ":basic_ack/:basic_nack in single mode deletes a specific outstanding confirm", %{
+      channel: channel
+    } do
+      mode = Enum.random([:basic_ack, :basic_nack])
 
-      assert %Worker.State{
-               outstanding_confirms: outstanding_confirms
-             } = :sys.get_state(pid)
+      state = %Worker.State{
+        channel: channel,
+        nack_cb: fn _ -> :ok end,
+        outstanding_confirms: []
+      }
 
-      assert [] = :ets.tab2list(outstanding_confirms)
+      outstanding_confirms = [{42, "data", "routing_key", []}]
 
-      :ets.insert(outstanding_confirms, {0, "payload_0"})
-      :ets.insert(outstanding_confirms, {1, "payload_1"})
-      :ets.insert(outstanding_confirms, {2, "payload_2"})
+      assert {:noreply,
+              %Worker.State{
+                outstanding_confirms: []
+              }} =
+               Worker.handle_info({mode, 42, false}, %{
+                 state
+                 | outstanding_confirms: outstanding_confirms
+               })
 
-      assert [
-               {0, "payload_0"},
-               {1, "payload_1"},
-               {2, "payload_2"}
-             ] = :ets.tab2list(outstanding_confirms)
+      outstanding_confirms = [
+        {42, "data", "routing_key", []},
+        {43, "data", "routing_key", []},
+        {44, "data", "routing_key", []}
+      ]
 
-      send(pid, {:basic_ack, 1, false})
+      assert {:noreply,
+              %Worker.State{
+                outstanding_confirms: [
+                  {43, "data", "routing_key", []},
+                  {44, "data", "routing_key", []}
+                ]
+              }} =
+               Worker.handle_info({mode, 42, false}, %{
+                 state
+                 | outstanding_confirms: outstanding_confirms
+               })
 
-      :timer.sleep(5)
+      outstanding_confirms = [
+        {42, "data", "routing_key", []},
+        {43, "data", "routing_key", []},
+        {44, "data", "routing_key", []}
+      ]
 
-      assert [
-               {0, "payload_0"},
-               {2, "payload_2"}
-             ] = :ets.tab2list(outstanding_confirms)
+      assert {:noreply,
+              %Worker.State{
+                outstanding_confirms: [
+                  {42, "data", "routing_key", []},
+                  {44, "data", "routing_key", []}
+                ]
+              }} =
+               Worker.handle_info({mode, 43, false}, %{
+                 state
+                 | outstanding_confirms: outstanding_confirms
+               })
     end
 
-    test ":basic_ack deletes multiple outstanding confirms", %{channel: channel} do
-      assert {:ok, pid} =
-               start_supervised(
-                 {Worker,
-                  %{
-                    channel: channel,
-                    confirm_type: :async
-                  }}
-               )
+    test ":basic_ack/:basic_nack in multi mode deletes outstanding confirms up to seq_number", %{
+      channel: channel
+    } do
+      mode = Enum.random([:basic_ack, :basic_nack])
 
-      assert %Worker.State{
-               outstanding_confirms: outstanding_confirms
-             } = :sys.get_state(pid)
+      state = %Worker.State{
+        channel: channel,
+        nack_cb: fn _ -> :ok end,
+        outstanding_confirms: []
+      }
 
-      assert [] = :ets.tab2list(outstanding_confirms)
+      outstanding_confirms = [
+        {42, "data", "routing_key", []},
+        {43, "data", "routing_key", []},
+        {44, "data", "routing_key", []}
+      ]
 
-      :ets.insert(outstanding_confirms, {0, "payload_0"})
-      :ets.insert(outstanding_confirms, {1, "payload_1"})
-      :ets.insert(outstanding_confirms, {2, "payload_2"})
+      assert {:noreply, %Worker.State{outstanding_confirms: []}} =
+               Worker.handle_info({mode, 42, true}, %{
+                 state
+                 | outstanding_confirms: outstanding_confirms
+               })
 
-      assert [
-               {0, "payload_0"},
-               {1, "payload_1"},
-               {2, "payload_2"}
-             ] = :ets.tab2list(outstanding_confirms)
-
-      send(pid, {:basic_ack, 2, true})
-
-      :timer.sleep(5)
-
-      assert [] = :ets.tab2list(outstanding_confirms)
+      assert {:noreply,
+              %Worker.State{
+                outstanding_confirms: [
+                  {42, "data", "routing_key", []}
+                ]
+              }} =
+               Worker.handle_info({mode, 43, true}, %{
+                 state
+                 | outstanding_confirms: outstanding_confirms
+               })
     end
 
-    test ":basic_nack deletes a single outstanding confirm", %{channel: channel} do
-      assert {:ok, pid} =
-               start_supervised(
-                 {Worker,
-                  %{
-                    channel: channel,
-                    confirm_type: :async
-                  }}
-               )
+    test ":basic_nack in single mode calls nack_cb with confirmed events", %{
+      channel: channel
+    } do
+      test_pid = self()
 
-      assert %Worker.State{
-               outstanding_confirms: outstanding_confirms
-             } = :sys.get_state(pid)
+      state = %Worker.State{
+        channel: channel,
+        nack_cb: fn args -> send(test_pid, args) end,
+        outstanding_confirms: [
+          {42, "data", "routing_key", []}
+        ]
+      }
 
-      assert [] = :ets.tab2list(outstanding_confirms)
+      assert {:noreply, %Worker.State{outstanding_confirms: []}} =
+               Worker.handle_info({:basic_nack, 42, false}, state)
 
-      :ets.insert(outstanding_confirms, {0, "payload_0"})
-      :ets.insert(outstanding_confirms, {1, "payload_1"})
-      :ets.insert(outstanding_confirms, {2, "payload_2"})
+      # Ensure nack_cb got called.
+      assert_receive([{42, "data", "routing_key", []}])
 
-      assert [
-               {0, "payload_0"},
-               {1, "payload_1"},
-               {2, "payload_2"}
-             ] = :ets.tab2list(outstanding_confirms)
-
-      send(pid, {:basic_nack, 1, false})
-
-      :timer.sleep(5)
-
-      assert [
-               {0, "payload_0"},
-               {2, "payload_2"}
-             ] = :ets.tab2list(outstanding_confirms)
+      # Ensure no further messages are received.
+      refute_receive(_)
     end
 
-    test ":basic_nack deletes multiple outstanding confirms", %{channel: channel} do
-      assert {:ok, pid} =
-               start_supervised(
-                 {Worker,
-                  %{
-                    channel: channel,
-                    confirm_type: :async
-                  }}
-               )
+    test ":basic_nack in multi mode calls nack_cb with confirmed events", %{
+      channel: channel
+    } do
+      test_pid = self()
 
-      assert %Worker.State{
-               outstanding_confirms: outstanding_confirms
-             } = :sys.get_state(pid)
+      state = %Worker.State{
+        channel: channel,
+        nack_cb: fn args -> send(test_pid, args) end,
+        outstanding_confirms: [
+          {42, "data", "routing_key", []},
+          {43, "data", "routing_key", []}
+        ]
+      }
 
-      assert [] = :ets.tab2list(outstanding_confirms)
+      assert {:noreply, %Worker.State{outstanding_confirms: []}} =
+               Worker.handle_info({:basic_nack, 42, true}, state)
 
-      :ets.insert(outstanding_confirms, {0, "payload_0"})
-      :ets.insert(outstanding_confirms, {1, "payload_1"})
-      :ets.insert(outstanding_confirms, {2, "payload_2"})
+      # Ensure nack_cb got called.
+      assert_receive([
+        {42, "data", "routing_key", []},
+        {43, "data", "routing_key", []}
+      ])
 
-      assert [
-               {0, "payload_0"},
-               {1, "payload_1"},
-               {2, "payload_2"}
-             ] = :ets.tab2list(outstanding_confirms)
-
-      send(pid, {:basic_nack, 2, true})
-
-      :timer.sleep(5)
-
-      assert [] = :ets.tab2list(outstanding_confirms)
+      # Ensure no further messages are received.
+      refute_receive(_)
     end
   end
 end

@@ -21,7 +21,7 @@ defmodule RabbitMQ.Producer.Worker do
         holds the reference to the protected ets table used to track outstanding Publisher `ack` or `nack` confirms.
     """
 
-    @enforce_keys ~w(channel outstanding_confirms)a
+    @enforce_keys ~w(channel nack_cb outstanding_confirms)a
     defstruct @enforce_keys
   end
 
@@ -44,15 +44,14 @@ defmodule RabbitMQ.Producer.Worker do
   ######################
 
   @impl true
-  def init(%{channel: channel, confirm_type: :async}) do
+  def init(%{channel: channel, confirm_type: :async, nack_cb: nack_cb}) do
     # Notify when an exit happens, be it graceful or forceful.
     # The corresponding channel and async handler will both be closed.
     Process.flag(:trap_exit, true)
 
-    with table <- :ets.new(:outstanding_confirms, [:public, :ordered_set]),
-         :ok <- Confirm.select(channel),
+    with :ok <- Confirm.select(channel),
          :ok <- Confirm.register_handler(channel, self()) do
-      {:ok, %State{channel: channel, outstanding_confirms: table}}
+      {:ok, %State{channel: channel, nack_cb: nack_cb, outstanding_confirms: []}}
     end
   end
 
@@ -68,8 +67,11 @@ defmodule RabbitMQ.Producer.Worker do
     # Are they nacked after a specific timeout? Is that configurable?
     case do_publish(channel, exchange, routing_key, data, opts) do
       :ok ->
-        :ets.insert(outstanding_confirms, {next_publish_seqno, data})
-        {:reply, {:ok, next_publish_seqno}, state}
+        outstanding_confirms = [
+          {next_publish_seqno, data, routing_key, opts} | outstanding_confirms
+        ]
+
+        {:reply, {:ok, next_publish_seqno}, %{state | outstanding_confirms: outstanding_confirms}}
 
       error ->
         {:reply, error, state}
@@ -78,56 +80,64 @@ defmodule RabbitMQ.Producer.Worker do
 
   @impl true
   def handle_info(
-        {:basic_ack, seq_number, false},
-        %State{outstanding_confirms: outstanding_confirms} = state
-      ) do
-    Logger.debug("Received ACK of #{seq_number}.")
+        {confirmation_type, seq_number, false},
+        %State{nack_cb: nack_cb, outstanding_confirms: outstanding_confirms} = state
+      )
+      when confirmation_type in [:basic_ack, :basic_nack] do
+    Logger.debug("Received #{confirmation_type} of #{seq_number}.")
 
-    true = :ets.delete(outstanding_confirms, seq_number)
+    {confirmed, outstanding} =
+      case outstanding_confirms do
+        [{^seq_number, _data, _routing_key, _opts} = confirmed] ->
+          {[confirmed], []}
 
-    {:noreply, state}
+        [{^seq_number, _data, _routing_key, _opts} = confirmed | rest] ->
+          {[confirmed], rest}
+
+        list ->
+          confirmed =
+            Enum.find(list, fn
+              {^seq_number, _data, _routing_key, _opts} -> true
+              _ -> false
+            end)
+
+          {[confirmed], List.delete(list, confirmed)}
+      end
+
+    if confirmation_type === :basic_nack do
+      nack_cb.(confirmed)
+    end
+
+    {:noreply, %{state | outstanding_confirms: outstanding}}
   end
 
   @impl true
   def handle_info(
-        {:basic_ack, seq_number, true},
-        %State{outstanding_confirms: outstanding_confirms} = state
-      ) do
-    Logger.debug("Received ACKs up to #{seq_number}.")
+        {confirmation_type, seq_number, true},
+        %State{nack_cb: nack_cb, outstanding_confirms: outstanding_confirms} = state
+      )
+      when confirmation_type in [:basic_ack, :basic_nack] do
+    Logger.debug("Received #{confirmation_type} up to #{seq_number}.")
 
-    # ms = :ets.fun2ms(fn {index, _data} when index <= seq_number -> true end)
-    ms = [{{:"$1", :"$2"}, [{:"=<", :"$1", seq_number}], [true]}]
-    _ = :ets.select_delete(outstanding_confirms, ms)
+    {confirmed, outstanding} =
+      case outstanding_confirms do
+        [{^seq_number, _data, _routing_key, _opts} | _outstanding] = confirmed ->
+          {confirmed, []}
 
-    {:noreply, state}
-  end
+        list ->
+          {outstanding, confirmed} =
+            Enum.split_while(list, fn {seq_no, _data, _routing_key, _opts} ->
+              seq_no < seq_number
+            end)
 
-  @impl true
-  def handle_info(
-        {:basic_nack, seq_number, false},
-        %State{outstanding_confirms: outstanding_confirms} = state
-      ) do
-    Logger.warn("Received NACK of #{seq_number}.")
+          {confirmed, outstanding}
+      end
 
-    # TODO also notify another process!
-    true = :ets.delete(outstanding_confirms, seq_number)
+    if confirmation_type === :basic_nack do
+      nack_cb.(confirmed)
+    end
 
-    {:noreply, state}
-  end
-
-  @impl true
-  def handle_info(
-        {:basic_nack, seq_number, true},
-        %State{outstanding_confirms: outstanding_confirms} = state
-      ) do
-    Logger.warn("Received NACKs up to #{seq_number}.")
-
-    # TODO also notify another process!
-    # ms = :ets.fun2ms(fn {index, _data} when index <= seq_number -> true end)
-    ms = [{{:"$1", :"$2"}, [{:"=<", :"$1", seq_number}], [true]}]
-    _ = :ets.select_delete(outstanding_confirms, ms)
-
-    {:noreply, state}
+    {:noreply, %{state | outstanding_confirms: outstanding}}
   end
 
   @doc """

@@ -123,6 +123,15 @@ defmodule RabbitSample.CustomerProducer do
 
     publish(payload, "customer.updated", opts)
   end
+
+  @doc """
+  In the unlikely event of a failed publisher confirm, messages that go
+  unack'd will be passed onto this callback. You can use this to notify
+  another process and deal with such exceptions in any way you like.
+  """
+  def on_unexpected_nack(unackd_messages) do
+    Logger.error("Failed to publish messages: #{inspect(unackd_messages)}")
+  end
 end
 ```
 
@@ -130,15 +139,13 @@ end
 
 To understand why this is important, please refer to the [reliable publishing implementation guide](https://www.rabbitmq.com/tutorials/tutorial-seven-java.html).
 
-ℹ️ In the unlikely event of an unexpected Publisher `nack`, your server will be notified via the `on_unexpected_nack/2` callback, letting you handle such exceptions in any way you see fit.
+ℹ️ In the unlikely event of an unexpected Publisher `nack`, your server will be notified via the `on_unexpected_nack/1` callback, letting you handle such exceptions in any way you see fit.
 
 ### Consumers
 
 To consume messages off the respective queues, we will define 2 separate consumers.
 
-⚠️ Please note that automatic message acknowledgement is **disabled** in `rabbit_mq`, therefore it's _your_ responsibility to ensure messages are `ack`'d or `nack`'d.
-
-ℹ️ Please consult the [Consumer Acknowledgement Modes and Data Safety Considerations](https://www.rabbitmq.com/confirms.html#acknowledgement-modes) for more details.
+To consume off `"customer/customer.created"`:
 
 ```elixir
 defmodule RabbitSample.CustomerCreatedConsumer do
@@ -159,6 +166,8 @@ defmodule RabbitSample.CustomerCreatedConsumer do
 end
 ```
 
+To consume off `"customer/customer.updated"`:
+
 ```elixir
 defmodule RabbitSample.CustomerUpdatedConsumer do
   use RabbitMQ.Consumer, queue: "customer/customer.updated", worker_count: 2, prefetch_count: 6
@@ -177,6 +186,10 @@ defmodule RabbitSample.CustomerUpdatedConsumer do
   end
 end
 ```
+
+⚠️ Please note that automatic message acknowledgement is **disabled** in `rabbit_mq`, therefore it's _your_ responsibility to ensure messages are `ack`'d or `nack`'d.
+
+ℹ️ Please consult the [Consumer Acknowledgement Modes and Data Safety Considerations](https://www.rabbitmq.com/confirms.html#acknowledgement-modes) for more details.
 
 ### Use under supervision tree
 

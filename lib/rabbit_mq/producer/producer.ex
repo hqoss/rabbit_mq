@@ -46,6 +46,15 @@ defmodule RabbitMQ.Producer do
 
           publish(payload, "customer.updated", opts)
         end
+
+        @doc \"\"\"
+        In the unlikely event of a failed publisher confirm, messages that go
+        unack'd will be passed onto this callback. You can use this to notify
+        another process and deal with such exceptions in any way you like.
+        \"\"\"
+        def on_unexpected_nack(unackd_messages) do
+          Logger.error("Failed to publish messages: #{inspect(unackd_messages)}")
+        end
       end
 
   Then, start as normal under your existing supervision tree:
@@ -74,8 +83,21 @@ defmodule RabbitMQ.Producer do
   [reliable publishing implementation guide](https://www.rabbitmq.com/tutorials/tutorial-seven-java.html).
 
   ℹ️ In the unlikely event of an unexpected Publisher `nack`,
-  your server will be notified via the `on_unexpected_nack/2` callback,
+  your server will be notified via the `on_unexpected_nack/1` callback,
   letting you handle such exceptions in any way you see fit.
+
+  `on_unexpected_nack/1` is a **required** callback with the following signature, and as such _must_ be implemented
+  by your Producer modules, even if it does nothing;
+
+      @type seq_no :: integer()
+      @type payload :: String.t()
+      @type routing_key :: String.t()
+      @type opts :: keyword()
+      @type original_publish_args :: {seq_no(), payload(), routing_key(), opts()}
+      @type unackd_messages :: list(original_publish_args())
+      @type result :: term()
+
+      @callback on_unexpected_nack(unackd_messages()) :: result()
 
   ## Configuration
 
@@ -126,6 +148,8 @@ defmodule RabbitMQ.Producer do
       @worker_count unquote(Keyword.get(opts, :worker_count, 3))
       @this_module __MODULE__
 
+      @behaviour Producer
+
       ##############
       # Public API #
       ##############
@@ -148,6 +172,7 @@ defmodule RabbitMQ.Producer do
         config = %{
           confirm_type: @confirm_type,
           exchange: @exchange,
+          nack_cb: &on_unexpected_nack/1,
           worker_count: @worker_count
         }
 
@@ -191,6 +216,16 @@ defmodule RabbitMQ.Producer do
   use GenServer
 
   @this_module __MODULE__
+
+  @type seq_no :: integer()
+  @type payload :: String.t()
+  @type routing_key :: String.t()
+  @type opts :: keyword()
+  @type original_publish_args :: {seq_no(), payload(), routing_key(), opts()}
+  @type unackd_messages :: list(original_publish_args())
+  @type result :: term()
+
+  @callback on_unexpected_nack(unackd_messages()) :: result()
 
   defmodule State do
     @moduledoc """
@@ -328,7 +363,7 @@ defmodule RabbitMQ.Producer do
     config =
       config
       |> Map.put(:channel, channel)
-      |> Map.take(~w(channel confirm_type)a)
+      |> Map.take(~w(channel confirm_type nack_cb)a)
 
     {:ok, pid} = Worker.start_link(config)
 

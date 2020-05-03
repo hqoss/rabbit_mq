@@ -5,26 +5,67 @@ defmodule RabbitMQTest.Producer do
 
   use ExUnit.Case
 
-  defmodule TestProducer do
-    @exchange "#{__MODULE__}"
+  # @amqp_url Application.get_env(:rabbit_mq, :amqp_url)
+  @exchange "#{__MODULE__}"
+  @routing_key "test.producer"
 
-    use Producer, exchange: @exchange, worker_count: 2
+  # setup_all do
+  #   assert {:ok, connection} = Connection.open(@amqp_url)
+  #   assert {:ok, channel} = Channel.open(connection)
 
-    def exchange, do: @exchange
-  end
+  #   # Ensure we have a disposable exchange set up.
+  #   assert :ok = Exchange.declare(channel, @exchange, :topic, durable: false)
+
+  #   # Declare a queue and bind it to the above exchange exchange.
+  #   {:ok, %{queue: queue}} = Queue.declare(channel, "")
+  #   :ok = Queue.bind(channel, queue, @exchange, routing_key: @routing_key)
+
+  #   # Clean up after all tests have ran.
+  #   on_exit(fn ->
+  #     # Ensure there are no messages left hanging in the queue as it gets deleted.
+  #     assert {:ok, %{message_count: 0}} = Queue.delete(channel, queue)
+
+  #     assert :ok = Exchange.delete(channel, @exchange)
+  #     assert :ok = Channel.close(channel)
+  #     assert :ok = Connection.close(connection)
+  #   end)
+
+  #   [channel: channel, connection: connection, queue: queue]
+  # end
+
+  # setup %{channel: channel, queue: queue} do
+  #   correlation_id = UUID.uuid4()
+
+  #   on_exit(fn ->
+  #     # Ensure there are no messages in the queue as the next test is about to start.
+  #     assert true = Queue.empty?(channel, queue)
+  #   end)
+
+  #   [correlation_id: correlation_id]
+  # end
 
   describe "#{__MODULE__}" do
+    @tag :wip
     test "defines correctly configured child specification" do
-      exchange = TestProducer.exchange()
+      defmodule TestProducer do
+        use Producer, exchange: "test_exchange"
+
+        def on_unexpected_nack(_), do: :ok
+      end
 
       assert %{
                id: TestProducer,
                restart: :permanent,
                shutdown: :brutal_kill,
                start:
-                 {RabbitMQ.Producer, :start_link,
+                 {Producer, :start_link,
                   [
-                    %{confirm_type: :async, exchange: ^exchange, worker_count: 2},
+                    %{
+                      confirm_type: :async,
+                      exchange: "test_exchange",
+                      nack_cb: _,
+                      worker_count: 3
+                    },
                     [name: TestProducer, opt: :extra_opt]
                   ]},
                type: :supervisor
@@ -32,28 +73,44 @@ defmodule RabbitMQTest.Producer do
     end
 
     test "establishes a connection and starts the defined number of workers" do
-      assert {:ok, pid} = start_supervised(TestProducer)
+      config = %{
+        confirm_type: :async,
+        exchange: @exchange,
+        nack_cb: fn _ -> :ok end,
+        worker_count: 2
+      }
+
+      assert {:ok, pid} = Producer.start_link(config, [])
 
       assert %Producer.State{
                connection: %Connection{} = connection,
+               workers: [worker_1, worker_2],
                worker_count: 2,
-               workers: [worker_1, worker_2]
+               worker_offset: 0
              } = :sys.get_state(pid)
 
-      assert true = Process.alive?(connection.pid)
+      assert true === Process.alive?(connection.pid)
 
       assert {0, worker_1_pid, _worker_1_config} = worker_1
       assert {1, worker_2_pid, _worker_2_config} = worker_2
 
       assert worker_1_pid !== worker_2_pid
+
+      assert :ok = GenServer.stop(pid)
     end
 
     test "workers are assigned their own channels from a shared connection" do
-      assert {:ok, pid} = start_supervised(TestProducer)
+      config = %{
+        confirm_type: :async,
+        exchange: @exchange,
+        nack_cb: fn _ -> :ok end,
+        worker_count: 2
+      }
+
+      assert {:ok, pid} = Producer.start_link(config, [])
 
       assert %Producer.State{
                connection: %Connection{} = connection,
-               worker_count: 2,
                workers: [
                  {0, worker_1_pid, _worker_1_config},
                  {1, worker_2_pid, _worker_2_config}
@@ -74,14 +131,22 @@ defmodule RabbitMQTest.Producer do
       # The connections are the same as they originate in the same parent.
       assert worker_1_channel.conn === worker_2_channel.conn
       assert Enum.random([worker_1_channel.conn, worker_2_channel.conn]) === connection
+
+      assert :ok = GenServer.stop(pid)
     end
 
     test "if a worker dies, it is re-started with a new channel, and its original channel is closed" do
-      assert {:ok, pid} = start_supervised(TestProducer)
+      config = %{
+        confirm_type: :async,
+        exchange: @exchange,
+        nack_cb: fn _ -> :ok end,
+        worker_count: 2
+      }
+
+      assert {:ok, pid} = Producer.start_link(config, [])
 
       assert %Producer.State{
                connection: connection,
-               worker_count: 2,
                workers: [
                  {0, _worker_1_pid, _worker_1_config},
                  {1, worker_2_pid, _worker_2_config}
@@ -91,11 +156,10 @@ defmodule RabbitMQTest.Producer do
       Process.exit(worker_2_pid, :kill)
 
       # Wait until a new worker is spawned.
-      :timer.sleep(25)
+      :timer.sleep(5)
 
       assert %Producer.State{
                connection: ^connection,
-               worker_count: 2,
                workers: [
                  {0, _worker_1_pid, _worker_1_config},
                  {1, worker_3_pid, _worker_3_config}
@@ -103,16 +167,31 @@ defmodule RabbitMQTest.Producer do
              } = :sys.get_state(pid)
 
       assert worker_2_pid !== worker_3_pid
+
+      assert :ok = GenServer.stop(pid)
     end
 
     test "if a connection dies, the entire Producer pool re-starts" do
+      supervisor = __MODULE__.Supervisor
+      supervised_producer = __MODULE__.SupervisedProducer
+
+      config = %{
+        confirm_type: :async,
+        exchange: @exchange,
+        nack_cb: fn _ -> :ok end,
+        worker_count: 2
+      }
+
       children = [
-        TestProducer
+        %{
+          id: supervisor,
+          start: {Producer, :start_link, [config, [name: supervised_producer]]}
+        }
       ]
 
-      assert {:ok, pid} = Supervisor.start_link(children, strategy: :one_for_one, max_restarts: 1)
+      assert {:ok, pid} = Supervisor.start_link(children, strategy: :one_for_one)
 
-      producer = Process.whereis(TestProducer)
+      producer = Process.whereis(supervised_producer)
 
       assert %Producer.State{
                connection: connection,
@@ -122,9 +201,9 @@ defmodule RabbitMQTest.Producer do
       Process.exit(connection.pid, :kill)
 
       # Wait until the child is re-started.
-      :timer.sleep(25)
+      :timer.sleep(5)
 
-      new_producer = Process.whereis(TestProducer)
+      new_producer = Process.whereis(supervised_producer)
 
       assert producer !== new_producer
 
@@ -137,6 +216,57 @@ defmodule RabbitMQTest.Producer do
       assert workers !== new_workers
 
       assert :ok = Supervisor.stop(pid)
+    end
+
+    test "publishing occurs in a round-robin fashion" do
+      config = %{
+        confirm_type: :async,
+        exchange: @exchange,
+        nack_cb: fn _ -> :ok end,
+        worker_count: 3
+      }
+
+      assert {:ok, pid} = Producer.start_link(config, [])
+
+      assert %Producer.State{
+               workers: [
+                 {_, worker_1_pid, _},
+                 {_, worker_2_pid, _},
+                 {_, worker_3_pid, _}
+               ],
+               worker_count: 3,
+               worker_offset: 0
+             } = :sys.get_state(pid)
+
+      assert {:ok, worker_1_pid} === GenServer.call(pid, :get_producer_pid)
+
+      assert %Producer.State{
+               worker_count: 3,
+               worker_offset: 1
+             } = :sys.get_state(pid)
+
+      assert {:ok, worker_2_pid} === GenServer.call(pid, :get_producer_pid)
+
+      assert %Producer.State{
+               worker_count: 3,
+               worker_offset: 2
+             } = :sys.get_state(pid)
+
+      assert {:ok, worker_3_pid} === GenServer.call(pid, :get_producer_pid)
+
+      assert %Producer.State{
+               worker_count: 3,
+               worker_offset: 3
+             } = :sys.get_state(pid)
+
+      assert {:ok, worker_1_pid} === GenServer.call(pid, :get_producer_pid)
+
+      assert %Producer.State{
+               worker_count: 3,
+               worker_offset: 4
+             } = :sys.get_state(pid)
+
+      assert :ok = GenServer.stop(pid)
     end
   end
 end
