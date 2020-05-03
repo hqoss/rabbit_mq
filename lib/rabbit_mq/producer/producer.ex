@@ -53,7 +53,7 @@ defmodule RabbitMQ.Producer do
         another process and deal with such exceptions in any way you like.
         \"\"\"
         def on_unexpected_nack(unackd_messages) do
-          Logger.error("Failed to publish messages: #{inspect(unackd_messages)}")
+          Logger.error("Failed to publish messages: \#{inspect(unackd_messages)}")
         end
       end
 

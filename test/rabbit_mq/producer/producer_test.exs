@@ -5,47 +5,10 @@ defmodule RabbitMQTest.Producer do
 
   use ExUnit.Case
 
-  # @amqp_url Application.get_env(:rabbit_mq, :amqp_url)
   @exchange "#{__MODULE__}"
   @routing_key "test.producer"
 
-  # setup_all do
-  #   assert {:ok, connection} = Connection.open(@amqp_url)
-  #   assert {:ok, channel} = Channel.open(connection)
-
-  #   # Ensure we have a disposable exchange set up.
-  #   assert :ok = Exchange.declare(channel, @exchange, :topic, durable: false)
-
-  #   # Declare a queue and bind it to the above exchange exchange.
-  #   {:ok, %{queue: queue}} = Queue.declare(channel, "")
-  #   :ok = Queue.bind(channel, queue, @exchange, routing_key: @routing_key)
-
-  #   # Clean up after all tests have ran.
-  #   on_exit(fn ->
-  #     # Ensure there are no messages left hanging in the queue as it gets deleted.
-  #     assert {:ok, %{message_count: 0}} = Queue.delete(channel, queue)
-
-  #     assert :ok = Exchange.delete(channel, @exchange)
-  #     assert :ok = Channel.close(channel)
-  #     assert :ok = Connection.close(connection)
-  #   end)
-
-  #   [channel: channel, connection: connection, queue: queue]
-  # end
-
-  # setup %{channel: channel, queue: queue} do
-  #   correlation_id = UUID.uuid4()
-
-  #   on_exit(fn ->
-  #     # Ensure there are no messages in the queue as the next test is about to start.
-  #     assert true = Queue.empty?(channel, queue)
-  #   end)
-
-  #   [correlation_id: correlation_id]
-  # end
-
   describe "#{__MODULE__}" do
-    @tag :wip
     test "defines correctly configured child specification" do
       defmodule TestProducer do
         use Producer, exchange: "test_exchange"

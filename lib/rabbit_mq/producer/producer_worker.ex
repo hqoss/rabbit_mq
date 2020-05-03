@@ -63,8 +63,8 @@ defmodule RabbitMQ.Producer.Worker do
       ) do
     next_publish_seqno = Confirm.next_publish_seqno(channel)
 
-    # TODO what happens if confirms are not received within a given time limit?
-    # Are they nacked after a specific timeout? Is that configurable?
+    # Investigate what happens if confirms are not received within a given time limit.
+    # Are they nacked after a specific timeout? Is any of this configurable?
     case do_publish(channel, exchange, routing_key, data, opts) do
       :ok ->
         outstanding_confirms = [

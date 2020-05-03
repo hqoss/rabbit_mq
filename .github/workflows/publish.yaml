@@ -35,6 +35,9 @@ jobs:
     - name: Compile source
       run: mix compile
 
+    - name: Check code quality
+      run: mix credo
+
     - name: Run Tests
       run: mix test
 
