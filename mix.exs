@@ -81,11 +81,11 @@ defmodule MQ.MixProject do
       {:amqp, "~> 1.4"},
       {:uuid, "~> 1.1"},
       # Dev/Test-only deps
-      {:ex_check, ">= 0.0.0", only: :dev, runtime: false},
-      {:credo, "~> 1.4", only: :dev, runtime: false},
-      {:dialyxir, "~> 1.0", only: :dev, runtime: false},
+      {:ex_check, ">= 0.0.0", only: [:dev, :test], runtime: false},
+      {:credo, "~> 1.4", only: [:dev, :test], runtime: false},
+      {:dialyxir, "~> 1.0", only: [:dev, :test], runtime: false},
       {:ex_doc, "~> 0.21", only: [:dev, :test], runtime: false},
-      {:excoveralls, "~> 0.10", only: :test, runtime: false}
+      {:excoveralls, "~> 0.10", only: [:dev, :test], runtime: false}
     ]
   end
 
