@@ -225,6 +225,7 @@ defmodule RabbitMQTest.Producer.Worker do
     test ":basic_nack in single mode calls nack_cb with confirmed events", %{
       channel: channel
     } do
+      # Capture current process pid to send a message to when `nack_cb` is called.
       test_pid = self()
 
       state = %Worker.State{
@@ -248,6 +249,7 @@ defmodule RabbitMQTest.Producer.Worker do
     test ":basic_nack in multi mode calls nack_cb with confirmed events", %{
       channel: channel
     } do
+      # Capture current process pid to send a message to when `nack_cb` is called.
       test_pid = self()
 
       state = %Worker.State{

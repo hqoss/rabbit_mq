@@ -37,24 +37,6 @@ defmodule RabbitMQTest.Consumer.Worker do
   end
 
   setup %{channel: channel, queue: queue} do
-    # Capture current process pid to send a message to when `consume_cb` is called.
-    test_pid = self()
-
-    # Starts the Consumer Worker.
-    assert {:ok, pid} =
-             start_supervised(
-               {Worker,
-                %{
-                  channel: channel,
-                  consume_cb: fn payload, meta, channel ->
-                    send(test_pid, {payload, meta})
-                    Basic.ack(channel, meta.delivery_tag)
-                  end,
-                  queue: queue,
-                  prefetch_count: 10
-                }}
-             )
-
     on_exit(fn ->
       # Ensure there are no messages in the queue as the next test is about to start.
       assert true = Queue.empty?(channel, queue)
@@ -64,7 +46,29 @@ defmodule RabbitMQTest.Consumer.Worker do
   end
 
   describe "#{__MODULE__}" do
-    test "is capable of consuming messages", %{channel: channel, correlation_id: correlation_id} do
+    test "is capable of consuming messages", %{
+      channel: channel,
+      correlation_id: correlation_id,
+      queue: queue
+    } do
+      # Capture current process pid to send a message to when `consume_cb` is called.
+      test_pid = self()
+
+      # Starts the Consumer Worker.
+      assert {:ok, pid} =
+               start_supervised(
+                 {Worker,
+                  %{
+                    channel: channel,
+                    consume_cb: fn payload, meta, channel ->
+                      send(test_pid, {payload, meta})
+                      Basic.ack(channel, meta.delivery_tag)
+                    end,
+                    queue: queue,
+                    prefetch_count: 10
+                  }}
+               )
+
       opts = [correlation_id: correlation_id]
 
       assert :ok = Basic.publish(channel, @exchange, "routing_key", "data", opts)
@@ -80,6 +84,61 @@ defmodule RabbitMQTest.Consumer.Worker do
 
       # Ensure no further messages are received.
       refute_receive(_)
+    end
+
+    test "implements :basic_consume_ok callback", %{channel: channel} do
+      state = %Worker.State{
+        channel: channel,
+        consume_cb: fn _, _, _ -> :ok end,
+        consumer_tag: UUID.uuid4()
+      }
+
+      assert {:noreply, ^state} =
+               Worker.handle_info({:basic_consume_ok, %{consumer_tag: state.consumer_tag}}, state)
+    end
+
+    test "implements :basic_cancel_ok callback", %{channel: channel} do
+      state = %Worker.State{
+        channel: channel,
+        consume_cb: fn _, _, _ -> :ok end,
+        consumer_tag: UUID.uuid4()
+      }
+
+      assert {:noreply, ^state} =
+               Worker.handle_info({:basic_cancel_ok, %{consumer_tag: state.consumer_tag}}, state)
+    end
+
+    test "implements :basic_cancel callback", %{channel: channel} do
+      state = %Worker.State{
+        channel: channel,
+        consume_cb: fn _, _, _ -> :ok end,
+        consumer_tag: UUID.uuid4()
+      }
+
+      assert {:noreply, ^state} =
+               Worker.handle_info({:basic_cancel, %{consumer_tag: state.consumer_tag}}, state)
+    end
+
+    test "implements :basic_deliver callback", %{channel: channel, correlation_id: correlation_id} do
+      # Capture current process pid to send a message to when `consume_cb` is called.
+      test_pid = self()
+
+      state = %Worker.State{
+        channel: channel,
+        consume_cb: fn payload, meta, channel ->
+          send(test_pid, {payload, meta})
+          Basic.ack(channel, meta.delivery_tag)
+        end,
+        consumer_tag: UUID.uuid4()
+      }
+
+      assert {:noreply, ^state} =
+               Worker.handle_info(
+                 {:basic_deliver, "data", %{correlation_id: correlation_id}},
+                 state
+               )
+
+      assert_receive({"data", %{correlation_id: ^correlation_id}})
     end
   end
 end

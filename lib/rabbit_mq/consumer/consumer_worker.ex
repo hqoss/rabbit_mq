@@ -63,7 +63,7 @@ defmodule RabbitMQ.Consumer.Worker do
         {:basic_consume_ok, %{consumer_tag: consumer_tag}},
         %State{} = state
       ) do
-    Logger.info("Consumer successfully registered as #{consumer_tag}.")
+    Logger.debug("Consumer successfully registered as #{consumer_tag}.")
     {:noreply, state}
   end
 
@@ -72,7 +72,7 @@ defmodule RabbitMQ.Consumer.Worker do
         {:basic_cancel_ok, %{consumer_tag: consumer_tag}},
         %State{} = state
       ) do
-    Logger.info("Consumer #{consumer_tag} cancelled.")
+    Logger.debug("Consumer #{consumer_tag} cancelled.")
     {:noreply, state}
   end
 

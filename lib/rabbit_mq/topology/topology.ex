@@ -66,9 +66,8 @@ defmodule RabbitMQ.Topology do
   """
   defmacro __using__(opts) do
     quote do
-      alias AMQP.{Channel, Connection, Exchange, Queue}
-
-      require Logger
+      alias AMQP.{Channel, Connection}
+      alias RabbitMQ.Topology
 
       # See https://hexdocs.pm/elixir/Supervisor.html#module-restart-values-restart.
       # `:transient` - the child process is restarted only if it terminates abnormally,
@@ -94,7 +93,7 @@ defmodule RabbitMQ.Topology do
       def init(_arg) do
         with {:ok, connection} <- Connection.open(amqp_url()),
              {:ok, channel} <- Channel.open(connection) do
-          state = Enum.flat_map(@exchanges, &declare_exchange(&1, channel))
+          state = Enum.flat_map(@exchanges, &Topology.declare_exchange(&1, channel))
 
           Channel.close(channel)
           Connection.close(connection)
@@ -110,47 +109,47 @@ defmodule RabbitMQ.Topology do
         {:stop, :shutdown, state}
       end
 
-      #####################
-      # Private Functions #
-      #####################
-
-      defp declare_exchange({exchange, type, routing_keys}, channel),
-        do: declare_exchange({exchange, type, routing_keys, []}, channel)
-
-      defp declare_exchange({exchange, type, routing_keys, opts}, channel) do
-        Logger.debug("Declaring #{type} exchange #{exchange} with opts: #{inspect(opts)}.")
-
-        :ok = Exchange.declare(channel, exchange, type, opts)
-
-        routing_keys
-        |> Enum.map(&declare_queue(&1, exchange, channel))
-        |> Enum.map(&bind_queue/1)
-      end
-
-      defp declare_queue({routing_key, queue}, exchange, channel),
-        do: declare_queue({routing_key, queue, []}, exchange, channel)
-
-      defp declare_queue({routing_key, queue, opts}, exchange, channel) do
-        if Keyword.get(opts, :exclusive) === true do
-          raise "Exclusive queues can only be declared through Consumer configuration."
-        end
-
-        Logger.debug("Declaring queue #{queue} with opts: #{inspect(opts)}.")
-
-        {:ok, %{queue: queue}} = Queue.declare(channel, queue, opts)
-        {routing_key, queue, exchange, channel}
-      end
-
-      defp bind_queue({routing_key, queue, exchange, channel}) do
-        Logger.debug(
-          "Binding queue #{queue} to exchange #{exchange} with routing_key #{routing_key}."
-        )
-
-        Queue.bind(channel, queue, exchange, routing_key: routing_key)
-        {queue, exchange, routing_key}
-      end
-
       defp amqp_url, do: Application.fetch_env!(:rabbit_mq, :amqp_url)
     end
+  end
+
+  alias AMQP.{Exchange, Queue}
+
+  require Logger
+
+  def declare_exchange({exchange, type, routing_keys}, channel),
+    do: declare_exchange({exchange, type, routing_keys, []}, channel)
+
+  def declare_exchange({exchange, type, routing_keys, opts}, channel) do
+    Logger.debug("Declaring #{type} exchange #{exchange} with opts: #{inspect(opts)}.")
+
+    :ok = Exchange.declare(channel, exchange, type, opts)
+
+    routing_keys
+    |> Enum.map(&declare_queue(&1, exchange, channel))
+    |> Enum.map(&bind_queue/1)
+  end
+
+  def declare_queue({routing_key, queue}, exchange, channel),
+    do: declare_queue({routing_key, queue, []}, exchange, channel)
+
+  def declare_queue({routing_key, queue, opts}, exchange, channel) do
+    if Keyword.get(opts, :exclusive) === true do
+      raise "Exclusive queues can only be declared through Consumer configuration."
+    end
+
+    Logger.debug("Declaring queue #{queue} with opts: #{inspect(opts)}.")
+
+    {:ok, %{queue: queue}} = Queue.declare(channel, queue, opts)
+    {routing_key, queue, exchange, channel}
+  end
+
+  def bind_queue({routing_key, queue, exchange, channel}) do
+    Logger.debug(
+      "Binding queue #{queue} to exchange #{exchange} with routing_key #{routing_key}."
+    )
+
+    Queue.bind(channel, queue, exchange, routing_key: routing_key)
+    {queue, exchange, routing_key}
   end
 end

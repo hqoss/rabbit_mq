@@ -215,6 +215,7 @@ defmodule RabbitMQTest.Consumer do
       channel: channel,
       correlation_id: correlation_id
     } do
+      # Capture current process pid to send a message to when `consume_cb` is called.
       test_pid = self()
       routing_key = "test.consumer.exclusive"
 
