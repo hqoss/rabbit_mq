@@ -40,10 +40,11 @@ jobs:
     - name: Check code formatting
       run: mix format --check-formatted
 
+    - name: Check code quality
+      run: mix credo
+
     - name: Compile source
       run: mix compile
 
     - name: Run tests and publish test coverage
       run: mix coveralls.github
-      # env:
-      #   COVERALLS_REPO_TOKEN: ${{ secrets.COVERALLS_REPO_TOKEN }}
