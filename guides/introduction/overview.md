@@ -99,17 +99,17 @@ defmodule RabbitSample.CustomerProducer do
   unack'd will be passed onto this callback. You can use this to notify
   another process and deal with such exceptions in any way you like.
   """
-  def on_unexpected_nack(unackd_messages) do
+  def on_publisher_nack(unackd_messages) do
     Logger.error("Failed to publish messages: #{inspect(unackd_messages)}")
   end
 end
 ```
 
-ℹ️ In the unlikely event of an unexpected Publisher `nack`, your server will be notified via the `on_unexpected_nack/1` callback, letting you handle such exceptions in any way you see fit.
-
 ### Consumers
 
 To consume messages off the respective queues, we will define 2 separate consumers.
+
+⚠️ Please note that automatic message acknowledgement is **disabled** in `rabbit_mq`, therefore it's _your_ responsibility to ensure messages are `ack`'d or `nack`'d.
 
 To consume off `"customer/customer.created"`:
 
@@ -152,8 +152,6 @@ defmodule RabbitSample.CustomerUpdatedConsumer do
   end
 end
 ```
-
-⚠️ Please note that automatic message acknowledgement is **disabled** in `rabbit_mq`, therefore it's _your_ responsibility to ensure messages are `ack`'d or `nack`'d.
 
 ### Start under supervision tree
 

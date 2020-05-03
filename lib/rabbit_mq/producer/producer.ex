@@ -52,7 +52,7 @@ defmodule RabbitMQ.Producer do
         unack'd will be passed onto this callback. You can use this to notify
         another process and deal with such exceptions in any way you like.
         \"\"\"
-        def on_unexpected_nack(unackd_messages) do
+        def on_publisher_nack(unackd_messages) do
           Logger.error("Failed to publish messages: \#{inspect(unackd_messages)}")
         end
       end
@@ -83,10 +83,10 @@ defmodule RabbitMQ.Producer do
   [reliable publishing implementation guide](https://www.rabbitmq.com/tutorials/tutorial-seven-java.html).
 
   ℹ️ In the unlikely event of an unexpected Publisher `nack`,
-  your server will be notified via the `on_unexpected_nack/1` callback,
+  your server will be notified via the `on_publisher_nack/1` callback,
   letting you handle such exceptions in any way you see fit.
 
-  `on_unexpected_nack/1` is a **required** callback with the following signature, and as such _must_ be implemented
+  `on_publisher_nack/1` is a **required** callback with the following signature, and as such _must_ be implemented
   by your Producer modules, even if it does nothing;
 
       @type seq_no :: integer()
@@ -97,7 +97,7 @@ defmodule RabbitMQ.Producer do
       @type unackd_messages :: list(original_publish_args())
       @type result :: term()
 
-      @callback on_unexpected_nack(unackd_messages()) :: result()
+      @callback on_publisher_nack(unackd_messages()) :: result()
 
   ## Configuration
 
@@ -172,7 +172,7 @@ defmodule RabbitMQ.Producer do
         config = %{
           confirm_type: @confirm_type,
           exchange: @exchange,
-          nack_cb: &on_unexpected_nack/1,
+          nack_cb: &on_publisher_nack/1,
           worker_count: @worker_count
         }
 
@@ -225,7 +225,7 @@ defmodule RabbitMQ.Producer do
   @type unackd_messages :: list(original_publish_args())
   @type result :: term()
 
-  @callback on_unexpected_nack(unackd_messages()) :: result()
+  @callback on_publisher_nack(unackd_messages()) :: result()
 
   defmodule State do
     @moduledoc """

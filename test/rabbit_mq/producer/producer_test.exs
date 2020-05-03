@@ -6,14 +6,13 @@ defmodule RabbitMQTest.Producer do
   use ExUnit.Case
 
   @exchange "#{__MODULE__}"
-  @routing_key "test.producer"
 
   describe "#{__MODULE__}" do
     test "defines correctly configured child specification" do
       defmodule TestProducer do
         use Producer, exchange: "test_exchange"
 
-        def on_unexpected_nack(_), do: :ok
+        def on_publisher_nack(_), do: :ok
       end
 
       assert %{
