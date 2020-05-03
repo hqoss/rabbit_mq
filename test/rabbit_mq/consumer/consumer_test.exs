@@ -49,7 +49,7 @@ defmodule RabbitMQTest.Consumer do
       defmodule TestConsumer do
         use Consumer, queue: "test_queue"
 
-        def consume(_payload, meta, channel), do: ack(channel, meta.delivery_tag)
+        def handle_message(_payload, meta, channel), do: ack(channel, meta.delivery_tag)
       end
 
       assert %{

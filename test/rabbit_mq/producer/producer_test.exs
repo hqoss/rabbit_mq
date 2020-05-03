@@ -12,7 +12,7 @@ defmodule RabbitMQTest.Producer do
       defmodule TestProducer do
         use Producer, exchange: "test_exchange"
 
-        def on_publisher_nack(_), do: :ok
+        def handle_publisher_nack(_), do: :ok
       end
 
       assert %{

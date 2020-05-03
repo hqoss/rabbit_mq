@@ -17,7 +17,7 @@ defmodule RabbitMQ.Consumer do
 
         require Logger
 
-        def consume(payload, meta, channel) do
+        def handle_message(payload, meta, channel) do
           Logger.info("Customer \#{payload} created.")
           ack(channel, meta.delivery_tag)
         end
@@ -30,7 +30,7 @@ defmodule RabbitMQ.Consumer do
 
         require Logger
 
-        def consume(payload, meta, channel) do
+        def handle_message(payload, meta, channel) do
           Logger.info("Customer updated. Data: \#{payload}.")
           ack(channel, meta.delivery_tag)
         end
@@ -49,7 +49,7 @@ defmodule RabbitMQ.Consumer do
       Supervisor.start_link(children, opts)
 
   As messages are published onto the `"customer/customer.created"`, or `"customer/customer.updated"` queues,
-  the corresponding `consume/3` will be invoked.
+  the corresponding `handle_message/3` will be invoked.
 
   ⚠️ Please note that automatic message acknowledgement is **disabled** in `rabbit_mq`, therefore
   it's _your_ responsibility to ensure messages are `ack`'d or `nack`'d.
@@ -81,19 +81,19 @@ defmodule RabbitMQ.Consumer do
 
   1. The module turns into a `GenServer`.
   2. The server starts _and supervises_ the desired number of workers.
-  3. `consume/3` is passed as a callback to each worker when `start_link/1` is called.
+  3. `handle_message/3` is passed as a callback to each worker when `start_link/1` is called.
   4. _If_ an exclusive queue is requested, it will be declared and bound to the Consumer.
-  5. Each worker starts consuming from the queue provided, calls `consume/3` for each message consumed.
+  5. Each worker starts consuming from the queue provided, calls `handle_message/3` for each message consumed.
   6. `ack/2`, `ack/3`, `nack/2`, `nack/3`, `reject/2`, and `reject/3` become automatically available.
 
-  `consume/3` needs to be defined with the following signature;
+  `handle_message/3` needs to be defined with the following signature;
 
       @type payload :: String.t()
       @type meta :: map()
       @type channel :: AMQP.Channel.t()
       @type result :: term()
 
-      @callback consume(payload(), meta(), channel()) :: result()
+      @callback handle_message(payload(), meta(), channel()) :: result()
 
   ### Exclusive queues
 
@@ -109,7 +109,7 @@ defmodule RabbitMQ.Consumer do
       defmodule CustomerConsumer do
         use RabbitMQ.Consumer, queue: {"customer", "customer.*"}, worker_count: 3
 
-        # Define `consume/3` as normal.
+        # Define `handle_message/3` as normal.
       end
 
   This will ensure that the queue is declared and correctly bound before the Consumer workers start
@@ -152,7 +152,7 @@ defmodule RabbitMQ.Consumer do
         end
 
         config = %{
-          consume_cb: &consume/3,
+          consume_cb: &handle_message/3,
           prefetch_count: @prefetch_count,
           queue: @queue,
           worker_count: @worker_count
@@ -197,7 +197,7 @@ defmodule RabbitMQ.Consumer do
   @type channel :: Channel.t()
   @type result :: term()
 
-  @callback consume(payload(), meta(), channel()) :: result()
+  @callback handle_message(payload(), meta(), channel()) :: result()
 
   defmodule State do
     @moduledoc """

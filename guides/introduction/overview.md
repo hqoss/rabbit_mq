@@ -99,7 +99,7 @@ defmodule RabbitSample.CustomerProducer do
   unack'd will be passed onto this callback. You can use this to notify
   another process and deal with such exceptions in any way you like.
   """
-  def on_publisher_nack(unackd_messages) do
+  def handle_publisher_nack(unackd_messages) do
     Logger.error("Failed to publish messages: #{inspect(unackd_messages)}")
   end
 end
@@ -119,7 +119,7 @@ defmodule RabbitSample.CustomerCreatedConsumer do
 
   require Logger
 
-  def consume(payload, meta, channel) do
+  def handle_message(payload, meta, channel) do
     %{delivery_tag: delivery_tag, redelivered: redelivered} = meta
 
     try do
@@ -140,7 +140,7 @@ defmodule RabbitSample.CustomerUpdatedConsumer do
 
   require Logger
 
-  def consume(payload, meta, channel) do
+  def handle_message(payload, meta, channel) do
     %{delivery_tag: delivery_tag, redelivered: redelivered} = meta
 
     try do
@@ -510,7 +510,7 @@ defmodule RabbitSampleTest.CustomerCreatedConsumer do
       refute_receive(_)
     end
 
-    test "consume/3 logs a message", %{
+    test "handle_message/3 logs a message", %{
       channel: channel,
       consumer_tag: consumer_tag
     } do
@@ -531,7 +531,7 @@ defmodule RabbitSampleTest.CustomerCreatedConsumer do
       )
 
       assert capture_log(fn ->
-               CustomerCreatedConsumer.consume(payload, meta, channel)
+               CustomerCreatedConsumer.handle_message(payload, meta, channel)
              end) =~ "Customer #{payload} created"
 
       # Stop consuming.
@@ -630,7 +630,7 @@ defmodule RabbitSampleTest.CustomerUpdatedConsumer do
       refute_receive(_)
     end
 
-    test "consume/3 logs a message", %{
+    test "handle_message/3 logs a message", %{
       channel: channel,
       consumer_tag: consumer_tag
     } do
@@ -652,7 +652,7 @@ defmodule RabbitSampleTest.CustomerUpdatedConsumer do
       )
 
       assert capture_log(fn ->
-               CustomerUpdatedConsumer.consume(payload, meta, channel)
+               CustomerUpdatedConsumer.handle_message(payload, meta, channel)
              end) =~ "Customer updated. Data: #{payload}."
 
       # Stop consuming.

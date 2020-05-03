@@ -2,7 +2,7 @@ defmodule RabbitMQ.Consumer.Worker do
   @moduledoc """
   The single Consumer worker used to consume messages from a queue.
 
-  Calls `consume/3` defined in the parent module for each message consumed.
+  Calls `handle_message/3` defined in the parent module for each message consumed.
   """
 
   alias AMQP.{Basic, Channel}
