@@ -114,10 +114,13 @@ defmodule RabbitMQ.Topology do
       # Private Functions #
       #####################
 
-      defp declare_exchange({exchange, :topic, routing_keys, opts}, channel) do
-        Logger.debug("Declaring topic exchange #{exchange} with opts: #{inspect(opts)}.")
+      defp declare_exchange({exchange, type, routing_keys}, channel),
+        do: declare_exchange({exchange, type, routing_keys, []}, channel)
 
-        :ok = Exchange.topic(channel, exchange, opts)
+      defp declare_exchange({exchange, type, routing_keys, opts}, channel) do
+        Logger.debug("Declaring #{type} exchange #{exchange} with opts: #{inspect(opts)}.")
+
+        :ok = Exchange.declare(channel, exchange, type, opts)
 
         routing_keys
         |> Enum.map(&declare_queue(&1, exchange, channel))
