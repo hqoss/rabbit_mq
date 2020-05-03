@@ -4,7 +4,7 @@ defmodule MQ.MixProject do
   def project do
     [
       app: :rabbit_mq,
-      version: "0.0.13",
+      version: "0.0.14",
       elixir: "~> 1.9",
       start_permanent: Mix.env() == :prod,
       aliases: aliases(),
@@ -72,7 +72,7 @@ defmodule MQ.MixProject do
   end
 
   defp description do
-    "🐇 Opinionated RabbitMQ client to help you build balanced and consistent Consumers and Producers"
+    "🐇 The RabbitMQ client that helps you build consistent and well-balanced Producer/Consumer pipelines"
   end
 
   # Run "mix help deps" to learn about dependencies.

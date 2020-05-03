@@ -1,6 +1,6 @@
 # Overview
 
-`rabbit_mq` builds on `amqp` to deliver modules that are pre-configured with sensible defaults and follow design principles that improve and delicately balance both performance _and_ reliability.
+`rabbit_mq` helps you build consistent and well-balanced Producer/Consumer pipelines.
 
 The following modules are provided;
 
