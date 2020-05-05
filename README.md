@@ -753,3 +753,7 @@ A quick and dirty tech-debt tracker, used in conjunction with Issues.
 -   [ ] Add support for publishing without confirm mode.
 -   [ ] Increase test coverage to as close to 100% as possible.
 -   [ ] Update testing guide.
+-   [ ] Expose `get_connection` on the individual Consumer and Producer level
+-   [ ] Change `handle_message/3` to return `:ok | {:error, :requeue} | {:error, term()}`
+-   [ ] Add `handle_publisher_ack`, make both optional
+-   [ ] Add all optional callbacks (`:basic_cancel`, etc.) to the Consumer module
