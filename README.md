@@ -48,7 +48,7 @@ Add `:rabbit_mq` as a dependency to your project's `mix.exs`:
 ```elixir
 defp deps do
   [
-    {:rabbit_mq, "~> 0.0.15"}
+    {:rabbit_mq, "~> 0.0.16"}
   ]
 end
 ```
