@@ -143,9 +143,9 @@ defmodule RabbitMQ.Producer do
 
       require Logger
 
-      @confirm_type unquote(Keyword.get(opts, :confirm_type, :async))
-      @exchange unquote(Keyword.fetch!(opts, :exchange))
-      @worker_count unquote(Keyword.get(opts, :worker_count, 3))
+      @confirm_type Keyword.get(unquote(opts), :confirm_type, :async)
+      @exchange Keyword.fetch!(unquote(opts), :exchange)
+      @worker_count Keyword.get(unquote(opts), :worker_count, 3)
       @this_module __MODULE__
 
       @behaviour Producer

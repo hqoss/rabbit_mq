@@ -125,9 +125,9 @@ defmodule RabbitMQ.Consumer do
 
       require Logger
 
-      @prefetch_count unquote(Keyword.get(opts, :prefetch_count, 10))
-      @queue unquote(Keyword.fetch!(opts, :queue))
-      @worker_count unquote(Keyword.get(opts, :worker_count, 3))
+      @prefetch_count Keyword.get(unquote(opts), :prefetch_count, 10)
+      @queue Keyword.fetch!(unquote(opts), :queue)
+      @worker_count Keyword.get(unquote(opts), :worker_count, 3)
       @this_module __MODULE__
 
       @behaviour Consumer
