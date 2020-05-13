@@ -1,16 +1,18 @@
 defmodule RabbitMQTest.Producer.Worker do
-  alias AMQP.{Basic, Channel, Connection, Exchange, Queue}
   alias RabbitMQ.Producer.Worker
 
-  require Logger
-
+  use AMQP
   use ExUnit.Case
 
-  @amqp_url Application.get_env(:rabbit_mq, :amqp_url)
   @exchange "#{__MODULE__}"
 
+  @connection __MODULE__.Connection
+  @worker __MODULE__
+
   setup_all do
-    assert {:ok, connection} = Connection.open(@amqp_url)
+    assert {:ok, _pid} = start_supervised({RabbitMQ.Connection, [name: @connection]})
+
+    connection = GenServer.call(@connection, :get)
     assert {:ok, channel} = Channel.open(connection)
 
     # Ensure we have a disposable exchange set up.
@@ -30,7 +32,6 @@ defmodule RabbitMQTest.Producer.Worker do
 
       assert :ok = Exchange.delete(channel, @exchange)
       assert :ok = Channel.close(channel)
-      assert :ok = Connection.close(connection)
     end)
 
     [channel: channel, queue: queue]
@@ -42,236 +43,222 @@ defmodule RabbitMQTest.Producer.Worker do
       assert true = Queue.empty?(channel, queue)
     end)
 
-    [
-      channel: channel,
-      correlation_id: UUID.uuid4()
-    ]
+    [correlation_id: UUID.uuid4()]
   end
 
-  describe "#{__MODULE__}" do
-    test "is capable of publishing correctly configured payloads", %{
-      channel: channel,
-      correlation_id: correlation_id,
-      queue: queue
-    } do
-      assert {:ok, pid} =
-               start_supervised(
-                 {Worker,
-                  %{
-                    channel: channel,
-                    confirm_type: :async,
-                    nack_cb: fn _ -> :ok end
-                  }}
-               )
+  test "start_link/1 starts a worker and establishes a dedicated channel" do
+    assert {:ok, pid} =
+             start_supervised(
+               {Worker, [connection: @connection, exchange: @exchange, name: @worker]}
+             )
 
-      # This process will now start receiving events.
-      assert {:ok, consumer_tag} = Basic.consume(channel, queue)
+    assert %Worker.State{
+             channel: %Channel{} = channel,
+             exchange: @exchange,
+             outstanding_confirms: []
+           } = :sys.get_state(pid)
 
-      # This will always be the first message received by the process.
-      assert_receive({:basic_consume_ok, %{consumer_tag: ^consumer_tag}})
+    assert channel.conn === GenServer.call(@connection, :get)
+  end
 
-      opts = [correlation_id: correlation_id]
+  test "publishes a message", %{channel: channel, correlation_id: correlation_id, queue: queue} do
+    assert {:ok, _pid} =
+             start_supervised(
+               {Worker, [connection: @connection, exchange: @exchange, name: @worker]}
+             )
 
-      assert {:ok, seq_no} =
-               GenServer.call(pid, {:publish, @exchange, "routing_key", "data", opts})
+    # Start receiving Consumer events.
+    assert {:ok, consumer_tag} = Basic.consume(channel, queue)
 
-      assert_receive(
-        {:basic_deliver, "data",
-         %{
-           consumer_tag: ^consumer_tag,
-           correlation_id: ^correlation_id,
-           delivery_tag: ^seq_no,
-           routing_key: "routing_key"
-         }}
-      )
+    # This will always be the first message received by the process.
+    assert_receive({:basic_consume_ok, %{consumer_tag: ^consumer_tag}})
 
-      # Unsubscribe.
-      Basic.cancel(channel, consumer_tag)
+    opts = [correlation_id: correlation_id]
 
-      # This will always be the last message received by the process.
-      assert_receive({:basic_cancel_ok, %{consumer_tag: ^consumer_tag}})
+    assert {:ok, seq_no} = GenServer.call(@worker, {:publish, "routing_key", "data", opts})
 
-      # Ensure no further messages are received.
-      refute_receive(_)
-    end
+    assert_receive(
+      {:basic_deliver, "data",
+       %{
+         consumer_tag: ^consumer_tag,
+         correlation_id: ^correlation_id,
+         delivery_tag: ^seq_no,
+         routing_key: "routing_key"
+       }}
+    )
 
-    test "fails to publish if correlation_id is not provided in opts", %{
-      channel: channel,
-      queue: queue
-    } do
-      assert {:ok, pid} =
-               start_supervised(
-                 {Worker,
-                  %{
-                    channel: channel,
-                    confirm_type: :async,
-                    nack_cb: fn _ -> :ok end
-                  }}
-               )
+    # Unsubscribe.
+    Basic.cancel(channel, consumer_tag)
 
-      # This process will now start receiving events.
-      assert {:ok, consumer_tag} = Basic.consume(channel, queue)
+    # This will always be the last message received by the process.
+    assert_receive({:basic_cancel_ok, %{consumer_tag: ^consumer_tag}})
 
-      # This will always be the first message received by the process.
-      assert_receive({:basic_consume_ok, %{consumer_tag: ^consumer_tag}})
+    # Ensure no further messages are received.
+    refute_receive(_)
+  end
 
-      assert {:error, :correlation_id_missing} =
-               GenServer.call(pid, {:publish, @exchange, "routing_key", "data", []})
+  test "[only item] publisher confirm event confirms a single outstanding confirm" do
+    assert {:ok, _pid} =
+             start_supervised(
+               {Worker, [connection: @connection, exchange: @exchange, name: @worker]}
+             )
 
-      # Unsubscribe
-      Basic.cancel(channel, consumer_tag)
+    state =
+      @worker
+      |> :sys.get_state()
+      |> Map.put(:outstanding_confirms, [{42, nil, nil, nil}])
 
-      # This will always be the last message received by the process.
-      assert_receive({:basic_cancel_ok, %{consumer_tag: ^consumer_tag}})
+    mode = Enum.random([:basic_ack, :basic_nack])
+    assert {:noreply, state} = Worker.handle_info({mode, 42, false}, state)
 
-      # Ensure no further messages are received.
-      refute_receive(_)
-    end
+    assert [] = state.outstanding_confirms
+  end
 
-    test ":basic_ack/:basic_nack in single mode deletes a specific outstanding confirm", %{
-      channel: channel
-    } do
-      mode = Enum.random([:basic_ack, :basic_nack])
+  test "[first item] publisher confirm event confirms a single outstanding confirm" do
+    assert {:ok, _pid} =
+             start_supervised(
+               {Worker, [connection: @connection, exchange: @exchange, name: @worker]}
+             )
 
-      state = %Worker.State{
-        channel: channel,
-        nack_cb: fn _ -> :ok end,
-        outstanding_confirms: []
-      }
-
-      outstanding_confirms = [{42, "data", "routing_key", []}]
-
-      assert {:noreply,
-              %Worker.State{
-                outstanding_confirms: []
-              }} =
-               Worker.handle_info({mode, 42, false}, %{
-                 state
-                 | outstanding_confirms: outstanding_confirms
-               })
-
-      outstanding_confirms = [
-        {42, "data", "routing_key", []},
-        {43, "data", "routing_key", []},
-        {44, "data", "routing_key", []}
-      ]
-
-      assert {:noreply,
-              %Worker.State{
-                outstanding_confirms: [
-                  {43, "data", "routing_key", []},
-                  {44, "data", "routing_key", []}
-                ]
-              }} =
-               Worker.handle_info({mode, 42, false}, %{
-                 state
-                 | outstanding_confirms: outstanding_confirms
-               })
-
-      outstanding_confirms = [
-        {42, "data", "routing_key", []},
-        {43, "data", "routing_key", []},
-        {44, "data", "routing_key", []}
-      ]
-
-      assert {:noreply,
-              %Worker.State{
-                outstanding_confirms: [
-                  {42, "data", "routing_key", []},
-                  {44, "data", "routing_key", []}
-                ]
-              }} =
-               Worker.handle_info({mode, 43, false}, %{
-                 state
-                 | outstanding_confirms: outstanding_confirms
-               })
-    end
-
-    test ":basic_ack/:basic_nack in multi mode deletes outstanding confirms up to seq_number", %{
-      channel: channel
-    } do
-      mode = Enum.random([:basic_ack, :basic_nack])
-
-      state = %Worker.State{
-        channel: channel,
-        nack_cb: fn _ -> :ok end,
-        outstanding_confirms: []
-      }
-
-      outstanding_confirms = [
-        {42, "data", "routing_key", []},
-        {43, "data", "routing_key", []},
-        {44, "data", "routing_key", []}
-      ]
-
-      assert {:noreply, %Worker.State{outstanding_confirms: []}} =
-               Worker.handle_info({mode, 42, true}, %{
-                 state
-                 | outstanding_confirms: outstanding_confirms
-               })
-
-      assert {:noreply,
-              %Worker.State{
-                outstanding_confirms: [
-                  {42, "data", "routing_key", []}
-                ]
-              }} =
-               Worker.handle_info({mode, 43, true}, %{
-                 state
-                 | outstanding_confirms: outstanding_confirms
-               })
-    end
-
-    test ":basic_nack in single mode calls nack_cb with confirmed events", %{
-      channel: channel
-    } do
-      # Capture current process pid to send a message to when `nack_cb` is called.
-      test_pid = self()
-
-      state = %Worker.State{
-        channel: channel,
-        nack_cb: fn args -> send(test_pid, args) end,
-        outstanding_confirms: [
-          {42, "data", "routing_key", []}
-        ]
-      }
-
-      assert {:noreply, %Worker.State{outstanding_confirms: []}} =
-               Worker.handle_info({:basic_nack, 42, false}, state)
-
-      # Ensure nack_cb got called.
-      assert_receive([{42, "data", "routing_key", []}])
-
-      # Ensure no further messages are received.
-      refute_receive(_)
-    end
-
-    test ":basic_nack in multi mode calls nack_cb with confirmed events", %{
-      channel: channel
-    } do
-      # Capture current process pid to send a message to when `nack_cb` is called.
-      test_pid = self()
-
-      state = %Worker.State{
-        channel: channel,
-        nack_cb: fn args -> send(test_pid, args) end,
-        outstanding_confirms: [
-          {42, "data", "routing_key", []},
-          {43, "data", "routing_key", []}
-        ]
-      }
-
-      assert {:noreply, %Worker.State{outstanding_confirms: []}} =
-               Worker.handle_info({:basic_nack, 42, true}, state)
-
-      # Ensure nack_cb got called.
-      assert_receive([
-        {42, "data", "routing_key", []},
-        {43, "data", "routing_key", []}
+    state =
+      @worker
+      |> :sys.get_state()
+      |> Map.put(:outstanding_confirms, [
+        {42, nil, nil, nil},
+        {41, nil, nil, nil}
       ])
 
-      # Ensure no further messages are received.
-      refute_receive(_)
-    end
+    mode = Enum.random([:basic_ack, :basic_nack])
+    assert {:noreply, state} = Worker.handle_info({mode, 42, false}, state)
+
+    assert [{41, nil, nil, nil}] = state.outstanding_confirms
+  end
+
+  test "[somewhere in the list] publisher confirm event confirms a single outstanding confirm" do
+    assert {:ok, _pid} =
+             start_supervised(
+               {Worker, [connection: @connection, exchange: @exchange, name: @worker]}
+             )
+
+    state =
+      @worker
+      |> :sys.get_state()
+      |> Map.put(:outstanding_confirms, [
+        {43, nil, nil, nil},
+        {42, nil, nil, nil},
+        {41, nil, nil, nil}
+      ])
+
+    mode = Enum.random([:basic_ack, :basic_nack])
+    assert {:noreply, state} = Worker.handle_info({mode, 42, false}, state)
+
+    assert [
+             {43, nil, nil, nil},
+             {41, nil, nil, nil}
+           ] = state.outstanding_confirms
+  end
+
+  test "[first or only item] publisher confirm event confirms multiple outstanding confirms" do
+    assert {:ok, _pid} =
+             start_supervised(
+               {Worker, [connection: @connection, exchange: @exchange, name: @worker]}
+             )
+
+    state =
+      @worker
+      |> :sys.get_state()
+      |> Map.put(:outstanding_confirms, [
+        {42, nil, nil, nil},
+        {41, nil, nil, nil},
+        {40, nil, nil, nil}
+      ])
+
+    mode = Enum.random([:basic_ack, :basic_nack])
+    assert {:noreply, state} = Worker.handle_info({mode, 42, true}, state)
+
+    assert [] = state.outstanding_confirms
+  end
+
+  test "[somewhere in the list] publisher confirm event confirms multiple outstanding confirms" do
+    assert {:ok, _pid} =
+             start_supervised(
+               {Worker, [connection: @connection, exchange: @exchange, name: @worker]}
+             )
+
+    state =
+      @worker
+      |> :sys.get_state()
+      |> Map.put(:outstanding_confirms, [
+        {43, nil, nil, nil},
+        {42, nil, nil, nil},
+        {41, nil, nil, nil}
+      ])
+
+    mode = Enum.random([:basic_ack, :basic_nack])
+    assert {:noreply, state} = Worker.handle_info({mode, 42, true}, state)
+
+    assert [{43, nil, nil, nil}] = state.outstanding_confirms
+  end
+
+  test "publisher acknowledgement triggers corresponding callback" do
+    test_pid = self()
+
+    assert {:ok, _pid} =
+             start_supervised(
+               {Worker,
+                [
+                  connection: @connection,
+                  exchange: @exchange,
+                  handle_publisher_ack: fn confirms -> send(test_pid, confirms) end,
+                  name: @worker
+                ]}
+             )
+
+    state =
+      @worker
+      |> :sys.get_state()
+      |> Map.put(:outstanding_confirms, [{42, nil, nil, nil}])
+
+    multiple? = Enum.random([true, false])
+    assert {:noreply, state} = Worker.handle_info({:basic_ack, 42, multiple?}, state)
+
+    assert_receive([{42, nil, nil, nil}])
+  end
+
+  test "publisher negative acknowledgement triggers corresponding callback" do
+    test_pid = self()
+
+    assert {:ok, _pid} =
+             start_supervised(
+               {Worker,
+                [
+                  connection: @connection,
+                  exchange: @exchange,
+                  handle_publisher_nack: fn confirms -> send(test_pid, confirms) end,
+                  name: @worker
+                ]}
+             )
+
+    state =
+      @worker
+      |> :sys.get_state()
+      |> Map.put(:outstanding_confirms, [{42, nil, nil, nil}])
+
+    multiple? = Enum.random([true, false])
+    assert {:noreply, state} = Worker.handle_info({:basic_nack, 42, multiple?}, state)
+
+    assert_receive([{42, nil, nil, nil}])
+  end
+
+  test "when a monitored process dies, an instruction to stop the GenServer is returned" do
+    assert {:ok, _pid} =
+             start_supervised(
+               {Worker, [connection: @connection, exchange: @exchange, name: @worker]}
+             )
+
+    state = :sys.get_state(@worker)
+
+    assert {:stop, {:channel_down, :failure}, state} =
+             Worker.handle_info({:DOWN, :reference, :process, self(), :failure}, state)
   end
 end
