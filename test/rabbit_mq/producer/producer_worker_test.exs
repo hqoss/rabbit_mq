@@ -9,6 +9,8 @@ defmodule RabbitMQTest.Producer.Worker do
   @connection __MODULE__.Connection
   @worker __MODULE__
 
+  @worker_opts [connection: @connection, exchange: @exchange, name: @worker]
+
   setup_all do
     assert {:ok, _pid} = start_supervised({RabbitMQ.Connection, [name: @connection]})
 
@@ -47,10 +49,7 @@ defmodule RabbitMQTest.Producer.Worker do
   end
 
   test "start_link/1 starts a worker and establishes a dedicated channel" do
-    assert {:ok, pid} =
-             start_supervised(
-               {Worker, [connection: @connection, exchange: @exchange, name: @worker]}
-             )
+    assert {:ok, pid} = start_supervised({Worker, @worker_opts})
 
     assert %Worker.State{
              channel: %Channel{} = channel,
@@ -62,10 +61,7 @@ defmodule RabbitMQTest.Producer.Worker do
   end
 
   test "publishes a message", %{channel: channel, correlation_id: correlation_id, queue: queue} do
-    assert {:ok, _pid} =
-             start_supervised(
-               {Worker, [connection: @connection, exchange: @exchange, name: @worker]}
-             )
+    assert {:ok, pid} = start_supervised({Worker, @worker_opts})
 
     # Start receiving Consumer events.
     assert {:ok, consumer_tag} = Basic.consume(channel, queue)
@@ -98,10 +94,7 @@ defmodule RabbitMQTest.Producer.Worker do
   end
 
   test "[only item] publisher confirm event confirms a single outstanding confirm" do
-    assert {:ok, _pid} =
-             start_supervised(
-               {Worker, [connection: @connection, exchange: @exchange, name: @worker]}
-             )
+    assert {:ok, pid} = start_supervised({Worker, @worker_opts})
 
     state =
       @worker
@@ -115,10 +108,7 @@ defmodule RabbitMQTest.Producer.Worker do
   end
 
   test "[first item] publisher confirm event confirms a single outstanding confirm" do
-    assert {:ok, _pid} =
-             start_supervised(
-               {Worker, [connection: @connection, exchange: @exchange, name: @worker]}
-             )
+    assert {:ok, pid} = start_supervised({Worker, @worker_opts})
 
     state =
       @worker
@@ -135,10 +125,7 @@ defmodule RabbitMQTest.Producer.Worker do
   end
 
   test "[somewhere in the list] publisher confirm event confirms a single outstanding confirm" do
-    assert {:ok, _pid} =
-             start_supervised(
-               {Worker, [connection: @connection, exchange: @exchange, name: @worker]}
-             )
+    assert {:ok, pid} = start_supervised({Worker, @worker_opts})
 
     state =
       @worker
@@ -159,10 +146,7 @@ defmodule RabbitMQTest.Producer.Worker do
   end
 
   test "[first or only item] publisher confirm event confirms multiple outstanding confirms" do
-    assert {:ok, _pid} =
-             start_supervised(
-               {Worker, [connection: @connection, exchange: @exchange, name: @worker]}
-             )
+    assert {:ok, pid} = start_supervised({Worker, @worker_opts})
 
     state =
       @worker
@@ -180,10 +164,7 @@ defmodule RabbitMQTest.Producer.Worker do
   end
 
   test "[somewhere in the list] publisher confirm event confirms multiple outstanding confirms" do
-    assert {:ok, _pid} =
-             start_supervised(
-               {Worker, [connection: @connection, exchange: @exchange, name: @worker]}
-             )
+    assert {:ok, pid} = start_supervised({Worker, @worker_opts})
 
     state =
       @worker
@@ -203,15 +184,12 @@ defmodule RabbitMQTest.Producer.Worker do
   test "publisher acknowledgement triggers corresponding callback" do
     test_pid = self()
 
-    assert {:ok, _pid} =
+    assert {:ok, pid} =
              start_supervised(
                {Worker,
-                [
-                  connection: @connection,
-                  exchange: @exchange,
-                  handle_publisher_ack: fn confirms -> send(test_pid, confirms) end,
-                  name: @worker
-                ]}
+                Keyword.put(@worker_opts, :handle_publisher_ack, fn confirms ->
+                  send(test_pid, confirms)
+                end)}
              )
 
     state =
@@ -228,15 +206,12 @@ defmodule RabbitMQTest.Producer.Worker do
   test "publisher negative acknowledgement triggers corresponding callback" do
     test_pid = self()
 
-    assert {:ok, _pid} =
+    assert {:ok, pid} =
              start_supervised(
                {Worker,
-                [
-                  connection: @connection,
-                  exchange: @exchange,
-                  handle_publisher_nack: fn confirms -> send(test_pid, confirms) end,
-                  name: @worker
-                ]}
+                Keyword.put(@worker_opts, :handle_publisher_nack, fn confirms ->
+                  send(test_pid, confirms)
+                end)}
              )
 
     state =
@@ -251,10 +226,7 @@ defmodule RabbitMQTest.Producer.Worker do
   end
 
   test "when a monitored process dies, an instruction to stop the GenServer is returned" do
-    assert {:ok, _pid} =
-             start_supervised(
-               {Worker, [connection: @connection, exchange: @exchange, name: @worker]}
-             )
+    assert {:ok, pid} = start_supervised({Worker, @worker_opts})
 
     state = :sys.get_state(@worker)
 
