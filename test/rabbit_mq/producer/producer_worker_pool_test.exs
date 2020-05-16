@@ -1,6 +1,6 @@
 defmodule RabbitMQTest.Producer.WorkerPool do
-  alias RabbitMQ.Producer.WorkerPool
   alias RabbitMQ.Producer.Worker
+  alias RabbitMQ.Producer.WorkerPool
 
   use AMQP
   use ExUnit.Case

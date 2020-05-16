@@ -1,10 +1,14 @@
 defmodule RabbitMQ.Producer do
   @moduledoc """
-  This module can be `use`d to start and maintain a pool of Producer workers.
+  This module should be `use`d to start a Producer.
+
+  Behind the scenes, a dedicated `AMQP.Connection` is established,
+  and a pool of Producers (workers) is started, resulting in a supervision
+  tree similar to the one below.
+
+  ![Producer supervision tree](assets/producer-supervision-tree.png)
 
   ## Example usage
-
-  `rabbit_mq` allows you to design consistent, SDK-like Producers.
 
   ℹ️ The following example assumes that the `"customer"` exchange already exists.
 
@@ -23,8 +27,7 @@ defmodule RabbitMQ.Producer do
         def customer_created(customer_id) when is_binary(customer_id) do
           opts = [
             content_type: "application/json",
-            correlation_id: UUID.uuid4(),
-            mandatory: true
+            correlation_id: UUID.uuid4()
           ]
 
           payload = Jason.encode!(%{v: "1.0.0", customer_id: customer_id})
@@ -38,32 +41,23 @@ defmodule RabbitMQ.Producer do
         def customer_updated(updated_customer) when is_map(updated_customer) do
           opts = [
             content_type: "application/json",
-            correlation_id: UUID.uuid4(),
-            mandatory: true
+            correlation_id: UUID.uuid4()
           ]
 
           payload = Jason.encode!(%{v: "1.0.0", customer_data: updated_customer})
 
           publish(payload, "customer.updated", opts)
         end
-
-        @doc \"\"\"
-        In the unlikely event of a failed publisher confirm, messages that go
-        unack'd will be passed onto this callback. You can use this to notify
-        another process and deal with such exceptions in any way you like.
-        \"\"\"
-        def handle_publisher_nack(unackd_messages) do
-          Logger.error("Failed to publish messages: \#{inspect(unackd_messages)}")
-        end
       end
+
+  ℹ️ To see which options can be passed as `opts` to `publish/3`,
+  visit https://hexdocs.pm/amqp/AMQP.Basic.html#publish/5.
 
   Then, start as normal under your existing supervision tree:
 
       children = [
-        RabbitSample.Topology,
-        RabbitSample.CustomerProducer,
-        RabbitSample.CustomerCreatedConsumer,
-        RabbitSample.CustomerUpdatedConsumer
+        RabbitSample.CustomerProducer
+        # ... start other children
       ]
 
       opts = [strategy: :one_for_one, name: RabbitSample.Supervisor]
@@ -74,90 +68,48 @@ defmodule RabbitMQ.Producer do
       RabbitSample.CustomerProducer.customer_created(customer_id)
       RabbitSample.CustomerProducer.customer_updated(updated_customer)
 
-
-  ⚠️ Please note that all Producer workers implement "reliable publishing".
-  Each Producer worker handles its publisher confirms _asynchronously_,
-  striking a delicate balance between performance and reliability.
+  ⚠️ All Producer workers implement "reliable publishing", which means that
+  publisher confirms are always enabled and handled _asynchronously_, striking
+  a delicate balance between performance and reliability.
 
   To understand why this is important, please refer to the
   [reliable publishing implementation guide](https://www.rabbitmq.com/tutorials/tutorial-seven-java.html).
 
-  ℹ️ In the unlikely event of an unexpected Publisher `nack`,
-  your server will be notified via the `handle_publisher_nack/1` callback,
-  letting you handle such exceptions in any way you see fit.
-
-  `handle_publisher_nack/1` is a **required** callback with the following signature, and as such _must_ be implemented
-  by your Producer modules, even if it does nothing;
-
-      @type seq_no :: integer()
-      @type payload :: String.t()
-      @type routing_key :: String.t()
-      @type opts :: keyword()
-      @type original_publish_args :: {seq_no(), payload(), routing_key(), opts()}
-      @type unackd_messages :: list(original_publish_args())
-      @type result :: term()
-
-      @callback handle_publisher_nack(unackd_messages()) :: result()
+  You can implement the _optional_ `handle_publisher_ack_confirms/1` and
+  `handle_publisher_nack_confirms/1` callbacks to receive publisher confirmations.
 
   ## Configuration
 
   The following options can be used with `RabbitMQ.Producer`;
 
-  * `:confirm_type`;
-      publisher acknowledgement mode.
-      Only `:async` is supported for now. Please consult the
-      [Publisher Confirms](https://www.rabbitmq.com/confirms.html#publisher-confirms)
-      section for more details.
-      Defaults to `:async`.
-  * `:exchange`;
-      the name of the exchange onto which the producer workers will publish.
-      **Required**.
-  * `:worker_count`;
-      number of workers to be spawned.
-      Cannot be greater than `:max_channels_per_connection` set in config.
-      Defaults to `3`.
-
-  When you `use RabbitMQ.Consumer`, a few things happen;
-
-  1. The module turns into a `GenServer`.
-  2. The server starts _and supervises_ the desired number of workers.
-  3. `publish/3` becomes available in your module.
-
-  `publish/3` is a _private_ function with the following signature;
-
-      @type payload :: String.t()
-      @type routing_key :: String.t()
-      @type opts :: keyword()
-      @type result :: :ok | {:error, :correlation_id_missing}
-
-      publish(payload(), routing_key(), opts()) :: result()
-
-  ⚠️ Please note that `correlation_id` is always required and failing to provide it will result in an exception.
-
-  ℹ️ To see which options can be passed as `opts` to `publish/3`, visit https://hexdocs.pm/amqp/AMQP.Basic.html#publish/5.
+  * `:exchange`; messages will be published onto this exchange. **Required**.
+  * `:worker_count`; number of workers to be spawned. Defaults to `3`.
   """
-
   defmacro __using__(opts) do
     quote do
-      alias RabbitMQ.Producer
-
-      require Logger
-
-      @confirm_type Keyword.get(unquote(opts), :confirm_type, :async)
-      @exchange Keyword.fetch!(unquote(opts), :exchange)
-      @worker_count Keyword.get(unquote(opts), :worker_count, 3)
-      @this_module __MODULE__
+      alias AMQP.Basic
+      alias RabbitMQ.Producer, as: Producer
 
       @behaviour Producer
 
-      ##############
-      # Public API #
-      ##############
+      @connection __MODULE__.Connection
+      @counter __MODULE__.Counter
+      @supervisor __MODULE__.Supervisor
+      @worker_pool __MODULE__.WorkerPool
+      @worker __MODULE__.Worker
 
-      def child_spec(opts) do
-        if @worker_count > max_workers() do
+      @exchange Keyword.fetch!(unquote(opts), :exchange)
+      @worker_count Keyword.get(unquote(opts), :worker_count, 3)
+
+      @doc """
+      Calls `RabbitMQ.Producer.child_spec/1` with scoped `opts`.
+      """
+      def child_spec(_) do
+        max_workers = Producer.max_workers()
+
+        if @worker_count > max_workers do
           raise """
-          Cannot start #{@worker_count} workers, maximum is #{max_workers()}.
+          Cannot start #{@worker_count} workers, maximum is #{max_workers}.
 
           You can configure this value as shown below;
 
@@ -169,209 +121,147 @@ defmodule RabbitMQ.Producer do
           """
         end
 
-        config = %{
-          confirm_type: @confirm_type,
+        opts = [
+          connection: @connection,
+          counter: @counter,
           exchange: @exchange,
-          nack_cb: &handle_publisher_nack/1,
-          worker_count: @worker_count
-        }
+          name: @supervisor,
+          worker: @worker,
+          worker_count: @worker_count,
+          worker_pool: @worker_pool
+        ]
 
-        opts = Keyword.put_new(opts, :name, @this_module)
-
-        # Read more about child specification:
-        # https://hexdocs.pm/elixir/Supervisor.html#module-child-specification
-        %{
-          id: @this_module,
-          start: {Producer, :start_link, [config, opts]},
-          type: :supervisor,
-          # Read more about restart values:
-          # https://hexdocs.pm/elixir/Supervisor.html#module-restart-values-restart
-          restart: :permanent,
-          # Read more about shutdown values:
-          # https://hexdocs.pm/elixir/Supervisor.html#module-shutdown-values-shutdown
-          shutdown: :brutal_kill
-        }
+        Producer.child_spec(opts)
       end
 
-      #####################
-      # Private Functions #
-      #####################
-
-      defp publish(payload, routing_key, opts)
-           when is_binary(payload) and is_binary(routing_key) and is_list(opts) do
-        with {:ok, producer_pid} <- GenServer.call(@this_module, :get_producer_pid) do
-          GenServer.call(producer_pid, {:publish, @exchange, routing_key, payload, opts})
-        end
+      @doc """
+      Dispatches a message to a worker in order to perform a publish.
+      """
+      @spec publish(Producer.publish_args()) :: Producer.publish_result()
+      def publish(routing_key, data, opts)
+          when is_binary(routing_key) and is_binary(data) and is_list(opts) do
+        Producer.dispatch({routing_key, data, opts}, @counter, @worker, @worker_count)
       end
-
-      defp max_workers, do: Application.get_env(:rabbit_mq, :max_channels_per_connection, 8)
     end
   end
 
-  alias AMQP.{Channel, Connection}
-  alias RabbitMQ.Producer.Worker
+  alias AMQP.Basic
+  alias RabbitMQ.Connection
+  alias RabbitMQ.Producer.WorkerPool
 
   require Logger
 
-  use GenServer
+  use Supervisor
 
   @this_module __MODULE__
 
+  @supervisor_opts ~w(connection counter exchange worker worker_count worker_pool)a
+  @offset_key :offset
+  @reset_counter_threshold 100_000
+
   @type seq_no :: integer()
-  @type payload :: String.t()
   @type routing_key :: String.t()
+  @type data :: String.t()
   @type opts :: keyword()
-  @type original_publish_args :: {seq_no(), payload(), routing_key(), opts()}
-  @type unackd_messages :: list(original_publish_args())
-  @type result :: term()
+  @type publish_args_with_seq_no :: {seq_no(), routing_key(), data(), opts()}
 
-  @callback handle_publisher_nack(unackd_messages()) :: result()
+  @type publish_args :: {routing_key(), data(), opts()}
+  @type publish_result :: {:ok, integer()} | Basic.error()
 
-  defmodule State do
-    @moduledoc """
-    The internal state held in the `RabbitMQ.Producer` server.
+  @callback handle_publisher_ack_confirms(list(publish_args_with_seq_no())) :: term()
+  @callback handle_publisher_nack_confirms(list(publish_args_with_seq_no())) :: term()
 
-    * `:connection`;
-        holds the dedicated `AMQP.Connection`.
-    * `:workers`;
-        the children started under the server. The server acts as a `Supervisor`.
-        Enables round-robin command dispatch.
-    * `:worker_count`;
-        a simple worker count tracker.
-        Used in round-robin command dispatch logic.
-    * `:worker_offset`;
-        a simple tracker to determine which worker to call next.
-        Used in round-robin command dispatch logic.
-    """
-
-    @enforce_keys [:connection, :workers, :worker_count]
-    defstruct connection: nil, workers: [], worker_count: 0, worker_offset: 0
-  end
-
-  ##############
-  # Public API #
-  ##############
+  @optional_callbacks handle_publisher_ack_confirms: 1, handle_publisher_nack_confirms: 1
 
   @doc """
-  Starts this module as a process via `GenServer.start_link/3`.
-
-  Only used by the module's `child_spec`.
+  Starts a named `Supervisor`, internally managing a dedicated
+  `AMQP.Connection` as well a dedicated `RabbitMQ.Producer.WorkerPool`.
   """
-  @spec start_link(map(), keyword()) :: GenServer.on_start()
-  def start_link(config, opts) do
-    GenServer.start_link(@this_module, config, opts)
+  @spec start_link(keyword()) :: GenServer.on_start()
+  def start_link(opts) do
+    name = Keyword.fetch!(opts, :name)
+    supervisor_opts = Keyword.take(opts, @supervisor_opts)
+
+    Supervisor.start_link(@this_module, supervisor_opts, name: name)
   end
+
+  @doc """
+  Sends a `:publish` message to a worker. Implements round-robin dispatch mechanism.
+  """
+  @spec dispatch(publish_args(), module(), module(), integer()) :: publish_result()
+  def dispatch({routing_key, data, opts}, counter, worker, worker_count) do
+    next = :ets.update_counter(counter, @offset_key, 1)
+
+    # Reset the counter once it's above the threshold to not
+    # degrade performance, e.g. when using `rem/2`.
+    if next > @reset_counter_threshold do
+      _reset = :ets.update_counter(counter, @offset_key, -next)
+    end
+
+    # Round-robin dispatch using the module name seems
+    # to be the fastest and least intrusive way.
+    index = rem(next, worker_count)
+    worker = Module.concat(worker, "#{index}")
+
+    GenServer.call(worker, {:publish, routing_key, data, opts})
+  end
+
+  @doc """
+  Retrieves the application-level limit on how many channels
+  can be opened per connection. Can be configured via
+  `:rabbit_mq, :max_channels_per_connection`.
+
+  If not set in config, defaults to `8`.
+
+  As a rule of thumb, most applications can use a single digit number of channels per connection.
+
+  For details, please consult the official RabbitMQ docs: https://www.rabbitmq.com/channels.html#channel-max.
+  """
+  @spec max_workers() :: integer()
+  def max_workers, do: Application.get_env(:rabbit_mq, :max_channels_per_connection, 8)
 
   ######################
   # Callback Functions #
   ######################
 
   @impl true
-  def init(config) do
-    Process.flag(:trap_exit, true)
+  def init(supervisor_opts) do
+    connection = Keyword.fetch!(supervisor_opts, :connection)
+    counter = Keyword.fetch!(supervisor_opts, :counter)
+    exchange = Keyword.fetch!(supervisor_opts, :exchange)
+    worker_count = Keyword.fetch!(supervisor_opts, :worker_count)
+    worker = Keyword.fetch!(supervisor_opts, :worker)
+    worker_pool = Keyword.fetch!(supervisor_opts, :worker_pool)
 
-    # Each worker pool will maintain and monitor its own connection.
-    {:ok, connection} = connect()
+    # _ = :ets.new(ets_counter, [:named_table, :public, write_concurrency: true, read_concurrency: true])
 
-    workers =
-      1..config.worker_count
-      |> Enum.with_index()
-      |> Enum.map(fn {_, index} -> start_worker(index, config, connection) end)
+    # No need for write or read concurrency as we are not using
+    # this table to write or read more than one key.
+    _ = :ets.new(counter, [:named_table, :public])
+    _ = :ets.insert(counter, {@offset_key, -1})
 
-    {:ok, %State{connection: connection, workers: workers, worker_count: config.worker_count}}
+    connection_opts = [max_channels: worker_count, name: connection]
+
+    worker_pool_opts = [
+      connection: connection,
+      exchange: exchange,
+      name: worker_pool,
+      worker: worker,
+      worker_count: worker_count
+    ]
+
+    children = [
+      %{
+        id: :connection,
+        start: {Connection, :start_link, [connection_opts]}
+      },
+      %{
+        id: :worker_pool,
+        start: {WorkerPool, :start_link, [worker_pool_opts]},
+        type: :supervisor
+      }
+    ]
+
+    Supervisor.init(children, strategy: :rest_for_one)
   end
-
-  @impl true
-  def handle_call(
-        :get_producer_pid,
-        _from,
-        %State{worker_offset: worker_offset, workers: workers, worker_count: worker_count} = state
-      ) do
-    index = rem(worker_offset, worker_count)
-    {_index, pid, _init_arg} = Enum.at(workers, index)
-
-    {:reply, {:ok, pid}, %{state | worker_offset: worker_offset + 1}}
-  end
-
-  @impl true
-  def handle_info({:DOWN, _, :process, _pid, reason}, %State{} = state) do
-    Logger.warn("Connection to broker lost due to #{inspect(reason)}.")
-
-    # Stop GenServer; will be restarted by Supervisor. Linked processes will be terminated,
-    # and all channels implicitly closed due to the connection process being down.
-    {:stop, {:connection_lost, reason}, %{state | connection: nil}}
-  end
-
-  @impl true
-  def handle_info(
-        {:EXIT, from, reason},
-        %State{connection: connection, workers: workers} = state
-      ) do
-    Logger.warn("Producer worker process terminated due to #{inspect(reason)}. Restarting.")
-
-    {index, _old_pid, config} = Enum.find(workers, fn {_index, pid, _config} -> pid === from end)
-
-    # Clean up, new channel will be established in `start_worker/3`.
-    :ok = Channel.close(config.channel)
-
-    updated_workers = List.replace_at(workers, index, start_worker(index, config, connection))
-
-    {:noreply, %{state | workers: updated_workers}}
-  end
-
-  @doc """
-  Invoked when the server is about to exit. It should do any cleanup required.
-  See https://hexdocs.pm/elixir/GenServer.html#c:terminate/2 for more details.
-  """
-  @impl true
-  def terminate(reason, %State{connection: connection} = state) do
-    Logger.warn("Terminating Producer pool: #{inspect(reason)}. Closing connection.")
-
-    case connection do
-      %Connection{} -> Connection.close(connection)
-      nil -> :ok
-    end
-
-    {:noreply, %{state | connection: nil}}
-  end
-
-  #####################
-  # Private Functions #
-  #####################
-
-  defp connect do
-    opts = [channel_max: max_channels(), heartbeat: heartbeat_interval_sec()]
-
-    amqp_url()
-    |> Connection.open(opts)
-    |> case do
-      {:ok, connection} ->
-        # Get notifications when the connection goes down
-        Process.monitor(connection.pid)
-        {:ok, connection}
-
-      {:error, error} ->
-        Logger.error("Failed to connect to broker due to #{inspect(error)}. Retrying...")
-        :timer.sleep(reconnect_interval_ms())
-        connect()
-    end
-  end
-
-  defp start_worker(index, config, connection) do
-    {:ok, channel} = Channel.open(connection)
-
-    config =
-      config
-      |> Map.put(:channel, channel)
-      |> Map.take(~w(channel confirm_type nack_cb)a)
-
-    {:ok, pid} = Worker.start_link(config)
-
-    {index, pid, config}
-  end
-
-  defp amqp_url, do: Application.fetch_env!(:rabbit_mq, :amqp_url)
-  defp heartbeat_interval_sec, do: Application.get_env(:rabbit_mq, :heartbeat_interval_sec, 30)
-  defp reconnect_interval_ms, do: Application.get_env(:rabbit_mq, :reconnect_interval_ms, 2500)
-  defp max_channels, do: Application.get_env(:rabbit_mq, :max_channels_per_connection, 8)
 end

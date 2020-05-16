@@ -1,4 +1,8 @@
 defmodule RabbitMQ.Producer.WorkerPool do
+  @moduledoc """
+  Starts given number of workers under a `Supervisor`.
+  """
+
   alias RabbitMQ.Producer.Worker
 
   use Supervisor

@@ -129,7 +129,7 @@ defmodule RabbitMQ.Producer.Worker do
 
   @impl true
   def handle_info({:basic_return, _payload, _meta}, %State{} = state) do
-    # TODO See if publisher ack/nack is received in this instance
+    # See if publisher ack/nack is received in this instance
     {:noreply, state}
   end
 
@@ -150,7 +150,7 @@ defmodule RabbitMQ.Producer.Worker do
   def terminate(reason, %State{channel: %Channel{} = channel} = state) do
     Logger.warn("Terminating Producer Worker: #{inspect(reason)}. Unregistering handler.")
 
-    # TODO Not sure this is ever needed.
+    # Not sure this is ever needed.
     # if Process.alive?(channel.pid) do
     Confirm.unregister_handler(channel)
     Basic.cancel_return(channel)
