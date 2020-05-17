@@ -5,10 +5,10 @@ defmodule RabbitMQ.Connection do
   Should be started under a `Supervisor`.
   """
 
-  require Logger
-
   use AMQP
   use GenServer
+
+  require Logger
 
   @connection_opts ~w(heartbeat_interval_sec max_channels name reconnect_interval_ms)a
   @this_module __MODULE__

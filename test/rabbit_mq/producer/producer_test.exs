@@ -4,6 +4,25 @@ defmodule RabbitMQTest.Producer do
   use AMQP
   use ExUnit.Case
 
+  import ExUnit.CaptureLog
+  require Logger
+
+  defmodule ProducerWithCallbacks do
+    use Producer, exchange: "#{__MODULE__}"
+
+    def handle_publisher_ack_confirms(events) do
+      Enum.map(events, fn {seq_number, _routing_key, _data, _opts} ->
+        Logger.debug("ACK'd #{seq_number}")
+      end)
+    end
+
+    def handle_publisher_nack_confirms(events) do
+      Enum.map(events, fn {seq_number, _routing_key, _data, _opts} ->
+        Logger.error("NACK'd #{seq_number}")
+      end)
+    end
+  end
+
   @amqp_url Application.get_env(:rabbit_mq, :amqp_url)
 
   @exchange "#{__MODULE__}"
@@ -15,7 +34,7 @@ defmodule RabbitMQTest.Producer do
   @worker_count 3
   @worker_pool __MODULE__.WorkerPool
 
-  @producer_opts [
+  @base_producer_opts [
     connection: @connection,
     counter: @counter,
     exchange: @exchange,
@@ -36,6 +55,12 @@ defmodule RabbitMQTest.Producer do
     {:ok, %{queue: queue}} = Queue.declare(channel, "", exclusive: true)
     :ok = Queue.bind(channel, queue, @exchange, routing_key: "#")
 
+    # Declare producer_opts with default publisher confirm callbacks.
+    producer_opts =
+      @base_producer_opts
+      |> Keyword.put(:handle_publisher_ack_confirms, fn _ -> :ok end)
+      |> Keyword.put(:handle_publisher_nack_confirms, fn _ -> :ok end)
+
     # Clean up after all tests have ran.
     on_exit(fn ->
       # This queue would have been deleted automatically when the connection
@@ -49,7 +74,7 @@ defmodule RabbitMQTest.Producer do
       assert :ok = Connection.close(connection)
     end)
 
-    [channel: channel, queue: queue]
+    [channel: channel, producer_opts: producer_opts, queue: queue]
   end
 
   setup %{channel: channel, queue: queue} do
@@ -61,8 +86,10 @@ defmodule RabbitMQTest.Producer do
     [correlation_id: UUID.uuid4()]
   end
 
-  test "start_link/1 starts a Supervisor with dedicated counter, connection, and worker pool" do
-    assert {:ok, _pid} = start_supervised({Producer, @producer_opts})
+  test "start_link/1 starts a Supervisor with dedicated counter, connection, and worker pool", %{
+    producer_opts: producer_opts
+  } do
+    assert {:ok, _pid} = start_supervised({Producer, producer_opts})
 
     assert [{:offset, -1}] = :ets.lookup(@counter, :offset)
 
@@ -78,9 +105,10 @@ defmodule RabbitMQTest.Producer do
   test "dispatch/4 updates the counter and publishes to the corresponding module", %{
     channel: channel,
     correlation_id: correlation_id,
+    producer_opts: producer_opts,
     queue: queue
   } do
-    assert {:ok, _pid} = start_supervised({Producer, @producer_opts})
+    assert {:ok, _pid} = start_supervised({Producer, producer_opts})
 
     assert [{:offset, -1}] = :ets.lookup(@counter, :offset)
 
@@ -112,9 +140,10 @@ defmodule RabbitMQTest.Producer do
   test "dispatch/4 resets the counter when the threshold is reached", %{
     channel: channel,
     correlation_id: correlation_id,
+    producer_opts: producer_opts,
     queue: queue
   } do
-    assert {:ok, _pid} = start_supervised({Producer, @producer_opts})
+    assert {:ok, _pid} = start_supervised({Producer, producer_opts})
 
     assert true = :ets.insert(@counter, {:offset, 100_000})
 
@@ -141,5 +170,56 @@ defmodule RabbitMQTest.Producer do
 
     # Ensure no further messages are received.
     refute_receive(_)
+  end
+
+  test "default publisher confirm callbacks are passed down to the workers", %{
+    producer_opts: producer_opts
+  } do
+    assert {:ok, _pid} = start_supervised({Producer, producer_opts})
+
+    # Pick a random child (index)
+    child_id = 0..2 |> Enum.random() |> Integer.to_string()
+    worker = Module.concat(@worker, child_id)
+
+    assert %{
+             handle_publisher_ack_confirms: handle_publisher_ack_confirms,
+             handle_publisher_nack_confirms: handle_publisher_nack_confirms
+           } = Process.whereis(worker) |> :sys.get_state()
+
+    assert capture_log(fn ->
+             handle_publisher_ack_confirms.([{0, "routing_key", "data", []}])
+           end) =~ "Publisher acknowledged 0"
+
+    assert capture_log(fn ->
+             handle_publisher_nack_confirms.([{1, "routing_key", "data", []}])
+           end) =~ "Publisher negatively acknowledged 1"
+  end
+
+  test "optional publisher confirm callbacks are passed down to the workers", %{
+    producer_opts: producer_opts
+  } do
+    assert {:ok, _pid} = start_supervised({ProducerWithCallbacks, producer_opts})
+
+    # Pick a random child (index)
+    child_id = 0..2 |> Enum.random() |> Integer.to_string()
+    worker = Module.concat(ProducerWithCallbacks.Worker, child_id)
+
+    assert %{
+             handle_publisher_ack_confirms: handle_publisher_ack_confirms,
+             handle_publisher_nack_confirms: handle_publisher_nack_confirms
+           } = Process.whereis(worker) |> :sys.get_state()
+
+    assert capture_log(fn ->
+             handle_publisher_ack_confirms.([{0, "routing_key", "data", []}])
+           end) =~ "ACK'd 0"
+
+    assert capture_log(fn ->
+             handle_publisher_nack_confirms.([{1, "routing_key", "data", []}])
+           end) =~ "NACK'd 1"
+  end
+
+  test "max_workers/0 retrieves the :max_channels_per_connection config" do
+    assert Application.get_env(:rabbit_mq, :max_channels_per_connection, 8) ===
+             Producer.max_workers()
   end
 end
