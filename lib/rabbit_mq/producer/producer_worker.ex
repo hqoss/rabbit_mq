@@ -73,7 +73,7 @@ defmodule RabbitMQ.Producer.Worker do
          :ok <- Confirm.register_handler(channel, self()) do
       # Monitor the channel process. Should channel exceptions occur,
       # such as when publishing to a non-existent exchange, we will
-      # try to exit cleanly and let the supervisor restart the worker.
+      # try to exit cleanly and let the supervisor restart the process.
       _ref = Process.monitor(channel.pid)
 
       {:ok,
@@ -137,8 +137,7 @@ defmodule RabbitMQ.Producer.Worker do
   def handle_info({:DOWN, _reference, :process, _pid, reason}, %State{} = state) do
     Logger.warn("Worker channel process down; #{inspect(reason)}.")
 
-    # Stop GenServer; will be restarted by Supervisor. Linked processes will be terminated,
-    # and all channels implicitly closed due to the connection process being down.
+    # Stop GenServer; will be restarted by Supervisor.
     {:stop, {:channel_down, reason}, state}
   end
 
@@ -150,13 +149,12 @@ defmodule RabbitMQ.Producer.Worker do
   def terminate(reason, %State{channel: %Channel{} = channel} = state) do
     Logger.warn("Terminating Producer Worker: #{inspect(reason)}. Unregistering handler.")
 
-    # Not sure this is ever needed.
-    # if Process.alive?(channel.pid) do
-    Confirm.unregister_handler(channel)
-    Basic.cancel_return(channel)
-    Channel.close(channel)
-
-    # end
+    # Not sure this check is needed.
+    if Process.alive?(channel.pid) do
+      Confirm.unregister_handler(channel)
+      Basic.cancel_return(channel)
+      Channel.close(channel)
+    end
 
     {:noreply, %{state | channel: nil, outstanding_confirms: []}}
   end

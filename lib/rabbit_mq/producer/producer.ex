@@ -192,8 +192,8 @@ defmodule RabbitMQ.Producer do
   def dispatch({routing_key, data, opts}, counter, worker, worker_count) do
     next = :ets.update_counter(counter, @offset_key, 1)
 
-    # Reset the counter once it's above the threshold to not
-    # degrade performance, e.g. when using `rem/2`.
+    # Reset the counter once it's above the threshold to prevent
+    # performance degradation over time, e.g. when using `rem/2`.
     if next > @reset_counter_threshold do
       _reset = :ets.update_counter(counter, @offset_key, -next)
     end
