@@ -48,7 +48,7 @@ Add `:rabbit_mq` as a dependency to your project's `mix.exs`:
 ```elixir
 defp deps do
   [
-    {:rabbit_mq, "~> 0.0.16"}
+    {:rabbit_mq, "~> 0.0.19"}
   ]
 end
 ```
@@ -60,6 +60,7 @@ The full documentation is [published on hex](https://hexdocs.pm/rabbit_mq/).
 The following modules are provided;
 
 -   [`RabbitMQ.Topology`](https://hexdocs.pm/rabbit_mq/RabbitMQ.Topology.html)
+-   [`RabbitMQ.Connection`](https://hexdocs.pm/rabbit_mq/RabbitMQ.Connection.html)
 -   [`RabbitMQ.Consumer`](https://hexdocs.pm/rabbit_mq/RabbitMQ.Consumer.html)
 -   [`RabbitMQ.Producer`](https://hexdocs.pm/rabbit_mq/RabbitMQ.Producer.html)
 
@@ -129,9 +130,9 @@ defmodule RabbitSample.CustomerProducer do
       mandatory: true
     ]
 
-    payload = Jason.encode!(%{v: "1.0.0", customer_id: customer_id})
+    data = Jason.encode!(%{v: "1.0.0", customer_id: customer_id})
 
-    publish(payload, "customer.created", opts)
+    publish("customer.created", data, opts)
   end
 
   @doc """
@@ -144,18 +145,9 @@ defmodule RabbitSample.CustomerProducer do
       mandatory: true
     ]
 
-    payload = Jason.encode!(%{v: "1.0.0", customer_data: updated_customer})
+    data = Jason.encode!(%{v: "1.0.0", customer_data: updated_customer})
 
-    publish(payload, "customer.updated", opts)
-  end
-
-  @doc """
-  In the unlikely event of a failed publisher confirm, messages that go
-  unack'd will be passed onto this callback. You can use this to notify
-  another process and deal with such exceptions in any way you like.
-  """
-  def handle_publisher_nack(unackd_messages) do
-    Logger.error("Failed to publish messages: #{inspect(unackd_messages)}")
+    publish("customer.updated", data, opts)
   end
 end
 ```

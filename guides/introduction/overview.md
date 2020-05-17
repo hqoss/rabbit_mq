@@ -5,6 +5,7 @@
 The following modules are provided;
 
 -   `RabbitMQ.Topology`
+-   `RabbitMQ.Connection`
 -   `RabbitMQ.Consumer`
 -   `RabbitMQ.Producer`
 
@@ -74,9 +75,9 @@ defmodule RabbitSample.CustomerProducer do
       mandatory: true
     ]
 
-    payload = Jason.encode!(%{v: "1.0.0", customer_id: customer_id})
+    data = Jason.encode!(%{v: "1.0.0", customer_id: customer_id})
 
-    publish(payload, "customer.created", opts)
+    publish("customer.created", data, opts)
   end
 
   @doc """
@@ -89,9 +90,9 @@ defmodule RabbitSample.CustomerProducer do
       mandatory: true
     ]
 
-    payload = Jason.encode!(%{v: "1.0.0", customer_data: updated_customer})
+    data = Jason.encode!(%{v: "1.0.0", customer_data: updated_customer})
 
-    publish(payload, "customer.updated", opts)
+    publish("customer.updated", data, opts)
   end
 
   @doc """

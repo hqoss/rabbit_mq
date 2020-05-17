@@ -2,17 +2,9 @@ defmodule RabbitMQ.Producer do
   @moduledoc """
   This module should be `use`d to start a Producer.
 
-  Behind the scenes, a dedicated `AMQP.Connection` is established,
-  and a pool of Producers (workers) is started, resulting in a supervision
-  tree similar to the one below.
-
-  ![Producer supervision tree](assets/producer-supervision-tree.png)
-
   ## Example usage
 
   ℹ️ The following example assumes that the `"customer"` exchange already exists.
-
-  First, define your (ideally domain-specific) Producer:
 
       defmodule RabbitSample.CustomerProducer do
         @moduledoc \"\"\"
@@ -32,28 +24,20 @@ defmodule RabbitMQ.Producer do
 
           payload = Jason.encode!(%{v: "1.0.0", customer_id: customer_id})
 
-          publish(payload, "customer.created", opts)
-        end
-
-        @doc \"\"\"
-        Publishes an event routed via "customer.updated".
-        \"\"\"
-        def customer_updated(updated_customer) when is_map(updated_customer) do
-          opts = [
-            content_type: "application/json",
-            correlation_id: UUID.uuid4()
-          ]
-
-          payload = Jason.encode!(%{v: "1.0.0", customer_data: updated_customer})
-
-          publish(payload, "customer.updated", opts)
+          publish("customer.created", payload, opts)
         end
       end
+
+  Behind the scenes, a dedicated `AMQP.Connection` is established,
+  and a pool of `RabbitMQ.Producer.Worker`s is started, resulting in a supervision
+  tree similar to the one below.
+
+  ![Producer supervision tree](assets/producer-supervision-tree.png)
 
   ℹ️ To see which options can be passed as `opts` to `publish/3`,
   visit https://hexdocs.pm/amqp/AMQP.Basic.html#publish/5.
 
-  Then, start as normal under your existing supervision tree:
+  Start under your existing supervision tree as normal:
 
       children = [
         RabbitSample.CustomerProducer
@@ -63,10 +47,9 @@ defmodule RabbitMQ.Producer do
       opts = [strategy: :one_for_one, name: RabbitSample.Supervisor]
       Supervisor.start_link(children, opts)
 
-  Finally, call the exposed methods from your application:
+  Call the exposed methods from your application:
 
       RabbitSample.CustomerProducer.customer_created(customer_id)
-      RabbitSample.CustomerProducer.customer_updated(updated_customer)
 
   ⚠️ All Producer workers implement "reliable publishing", which means that
   publisher confirms are always enabled and handled _asynchronously_, striking
