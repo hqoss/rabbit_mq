@@ -12,7 +12,7 @@ defmodule RabbitMQTest.Producer.WorkerPool do
   @worker_count 3
   @worker_pool __MODULE__
 
-  @producer_worker_opts [
+  @base_worker_pool_opts [
     connection: @connection,
     exchange: @exchange,
     name: @worker_pool,
@@ -22,11 +22,20 @@ defmodule RabbitMQTest.Producer.WorkerPool do
 
   setup_all do
     assert {:ok, _pid} = start_supervised({RabbitMQ.Connection, [name: @connection]})
-    :ok
+
+    # Declare worker_pool_opts with default publisher confirm callbacks.
+    worker_pool_opts =
+      @base_worker_pool_opts
+      |> Keyword.put(:handle_publisher_ack_confirms, fn _ -> :ok end)
+      |> Keyword.put(:handle_publisher_nack_confirms, fn _ -> :ok end)
+
+    [worker_pool_opts: worker_pool_opts]
   end
 
-  test "start_link/1 starts a supervised worker pool with correctly named children" do
-    assert {:ok, _pid} = start_supervised({WorkerPool, @producer_worker_opts})
+  test "start_link/1 starts a supervised worker pool with correctly named children", %{
+    worker_pool_opts: worker_pool_opts
+  } do
+    assert {:ok, _pid} = start_supervised({WorkerPool, worker_pool_opts})
 
     assert [
              {2, worker_2, :worker, [RabbitMQ.Producer.Worker]},
@@ -39,8 +48,8 @@ defmodule RabbitMQTest.Producer.WorkerPool do
     assert worker_2 === Process.whereis(Module.concat(@worker, "2"))
   end
 
-  test "all worker pool children use correctly configured exchange" do
-    assert {:ok, _pid} = start_supervised({WorkerPool, @producer_worker_opts})
+  test "children use correctly configured exchange", %{worker_pool_opts: worker_pool_opts} do
+    assert {:ok, _pid} = start_supervised({WorkerPool, worker_pool_opts})
 
     # Pick a random child (index)
     child_id = 0..2 |> Enum.random() |> Integer.to_string()
@@ -50,8 +59,29 @@ defmodule RabbitMQTest.Producer.WorkerPool do
            } = @worker |> Module.concat(child_id) |> :sys.get_state()
   end
 
-  test "all worker pool children re-use the same connection" do
-    assert {:ok, _pid} = start_supervised({WorkerPool, @producer_worker_opts})
+  test "children use correctly configured publisher confirm callbacks", %{
+    worker_pool_opts: worker_pool_opts
+  } do
+    assert {:ok, _pid} = start_supervised({WorkerPool, worker_pool_opts})
+
+    handle_publisher_ack_confirms =
+      Keyword.fetch!(worker_pool_opts, :handle_publisher_ack_confirms)
+
+    handle_publisher_nack_confirms =
+      Keyword.fetch!(worker_pool_opts, :handle_publisher_nack_confirms)
+
+    # Pick a random child (index)
+    child_id = 0..2 |> Enum.random() |> Integer.to_string()
+
+    assert %Worker.State{
+             exchange: @exchange,
+             handle_publisher_ack_confirms: ^handle_publisher_ack_confirms,
+             handle_publisher_nack_confirms: ^handle_publisher_nack_confirms
+           } = @worker |> Module.concat(child_id) |> :sys.get_state()
+  end
+
+  test "children re-use the same connection", %{worker_pool_opts: worker_pool_opts} do
+    assert {:ok, _pid} = start_supervised({WorkerPool, worker_pool_opts})
 
     assert %Connection{pid: connection_pid} = GenServer.call(@connection, :get)
 

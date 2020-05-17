@@ -9,7 +9,14 @@ defmodule RabbitMQ.Producer.WorkerPool do
 
   @this_module __MODULE__
 
-  @worker_pool_opts ~w(connection exchange handle_publisher_ack handle_publisher_nack worker worker_count)a
+  @worker_pool_opts ~w(
+    connection
+    exchange
+    handle_publisher_ack_confirms
+    handle_publisher_nack_confirms
+    worker
+    worker_count
+  )a
 
   def start_link(opts) do
     name = Keyword.fetch!(opts, :name)

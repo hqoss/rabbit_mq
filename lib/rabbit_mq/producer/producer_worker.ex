@@ -3,14 +3,19 @@ defmodule RabbitMQ.Producer.Worker do
   The single Producer worker used to publish messages onto an exchange.
   """
 
-  alias AMQP.{Basic, Channel, Confirm, Connection}
+  use AMQP
+  use GenServer
 
   require Logger
 
-  use GenServer
-
   @this_module __MODULE__
-  @worker_opts ~w(confirm_type connection exchange handle_publisher_ack handle_publisher_nack)a
+  @worker_opts ~w(
+    confirm_type
+    connection
+    exchange
+    handle_publisher_ack_confirms
+    handle_publisher_nack_confirms
+  )a
 
   defmodule State do
     @moduledoc """
@@ -18,12 +23,18 @@ defmodule RabbitMQ.Producer.Worker do
 
     * `:channel` - holds the dedicated `AMQP.Channel`
     * `:exchange` - the exchange to publish to
-    * `:handle_publisher_ack` - callback to invoke on Publisher `ack`
-    * `:handle_publisher_nack` - callback to invoke on Publisher `nack`
+    * `:handle_publisher_ack_confirms` - callback to invoke on Publisher `ack`
+    * `:handle_publisher_nack_confirms` - callback to invoke on Publisher `nack`
     * `:outstanding_confirms` - tracks outstanding Publisher `ack` or `nack` confirms
     """
 
-    @enforce_keys ~w(channel exchange handle_publisher_ack handle_publisher_nack outstanding_confirms)a
+    @enforce_keys ~w(
+      channel
+      exchange
+      handle_publisher_ack_confirms
+      handle_publisher_nack_confirms
+      outstanding_confirms
+    )a
     defstruct @enforce_keys
   end
 
@@ -58,12 +69,8 @@ defmodule RabbitMQ.Producer.Worker do
 
     connection = Keyword.fetch!(worker_opts, :connection)
     exchange = Keyword.fetch!(worker_opts, :exchange)
-
-    handle_publisher_ack =
-      Keyword.get(worker_opts, :handle_publisher_ack, &default_handle_publisher_ack/1)
-
-    handle_publisher_nack =
-      Keyword.get(worker_opts, :handle_publisher_nack, &default_handle_publisher_nack/1)
+    handle_publisher_ack_confirms = Keyword.fetch!(worker_opts, :handle_publisher_ack_confirms)
+    handle_publisher_nack_confirms = Keyword.fetch!(worker_opts, :handle_publisher_nack_confirms)
 
     %Connection{} = connection = GenServer.call(connection, :get)
 
@@ -80,8 +87,8 @@ defmodule RabbitMQ.Producer.Worker do
        %State{
          channel: channel,
          exchange: exchange,
-         handle_publisher_ack: handle_publisher_ack,
-         handle_publisher_nack: handle_publisher_nack,
+         handle_publisher_ack_confirms: handle_publisher_ack_confirms,
+         handle_publisher_nack_confirms: handle_publisher_nack_confirms,
          outstanding_confirms: []
        }}
     end
@@ -124,7 +131,7 @@ defmodule RabbitMQ.Producer.Worker do
       when confirmation_type in [:basic_ack, :basic_nack] do
     outstanding_confirms
     |> update_outstanding_confirms(seq_number, multiple)
-    |> handle_confirmation(confirmation_type, state)
+    |> handle_confirmations(confirmation_type, state)
   end
 
   @impl true
@@ -162,18 +169,6 @@ defmodule RabbitMQ.Producer.Worker do
   #####################
   # Private Functions #
   #####################
-
-  defp default_handle_publisher_ack(events) do
-    Enum.map(events, fn {seq_number, _routing_key, _data, _opts} ->
-      Logger.debug("Publisher acknowledged #{seq_number}.")
-    end)
-  end
-
-  defp default_handle_publisher_nack(events) do
-    Enum.map(events, fn {seq_number, _routing_key, _data, _opts} ->
-      Logger.error("Publisher negatively acknowledged #{seq_number}.")
-    end)
-  end
 
   defp update_outstanding_confirms(outstanding_confirms, seq_number, true) do
     case outstanding_confirms do
@@ -214,25 +209,25 @@ defmodule RabbitMQ.Producer.Worker do
     end
   end
 
-  defp handle_confirmation(
+  defp handle_confirmations(
          {confirmed, outstanding},
          :basic_ack,
          %State{
-           handle_publisher_ack: handle_publisher_ack
+           handle_publisher_ack_confirms: handle_publisher_ack_confirms
          } = state
        ) do
-    spawn(fn -> handle_publisher_ack.(confirmed) end)
+    spawn(fn -> handle_publisher_ack_confirms.(confirmed) end)
     {:noreply, %{state | outstanding_confirms: outstanding}}
   end
 
-  defp handle_confirmation(
+  defp handle_confirmations(
          {confirmed, outstanding},
          :basic_nack,
          %State{
-           handle_publisher_nack: handle_publisher_nack
+           handle_publisher_nack_confirms: handle_publisher_nack_confirms
          } = state
        ) do
-    spawn(fn -> handle_publisher_nack.(confirmed) end)
+    spawn(fn -> handle_publisher_nack_confirms.(confirmed) end)
     {:noreply, %{state | outstanding_confirms: outstanding}}
   end
 end

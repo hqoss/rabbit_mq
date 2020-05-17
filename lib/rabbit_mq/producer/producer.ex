@@ -87,14 +87,13 @@ defmodule RabbitMQ.Producer do
   """
   defmacro __using__(opts) do
     quote do
-      alias AMQP.Basic
       alias RabbitMQ.Producer, as: Producer
 
       @behaviour Producer
 
       @connection __MODULE__.Connection
       @counter __MODULE__.Counter
-      @supervisor __MODULE__.Supervisor
+      @name __MODULE__
       @worker_pool __MODULE__.WorkerPool
       @worker __MODULE__.Worker
 
@@ -125,7 +124,7 @@ defmodule RabbitMQ.Producer do
           connection: @connection,
           counter: @counter,
           exchange: @exchange,
-          name: @supervisor,
+          name: @name,
           worker: @worker,
           worker_count: @worker_count,
           worker_pool: @worker_pool
@@ -137,7 +136,7 @@ defmodule RabbitMQ.Producer do
       @doc """
       Dispatches a message to a worker in order to perform a publish.
       """
-      @spec publish(Producer.publish_args()) :: Producer.publish_result()
+      @impl true
       def publish(routing_key, data, opts)
           when is_binary(routing_key) and is_binary(data) and is_list(opts) do
         Producer.dispatch({routing_key, data, opts}, @counter, @worker, @worker_count)
@@ -149,13 +148,13 @@ defmodule RabbitMQ.Producer do
   alias RabbitMQ.Connection
   alias RabbitMQ.Producer.WorkerPool
 
-  require Logger
-
   use Supervisor
+
+  require Logger
 
   @this_module __MODULE__
 
-  @supervisor_opts ~w(connection counter exchange worker worker_count worker_pool)a
+  @supervisor_opts ~w(connection counter exchange name worker worker_count worker_pool)a
   @offset_key :offset
   @reset_counter_threshold 100_000
 
@@ -168,6 +167,7 @@ defmodule RabbitMQ.Producer do
   @type publish_args :: {routing_key(), data(), opts()}
   @type publish_result :: {:ok, integer()} | Basic.error()
 
+  @callback publish(routing_key(), data(), opts()) :: publish_result()
   @callback handle_publisher_ack_confirms(list(publish_args_with_seq_no())) :: term()
   @callback handle_publisher_nack_confirms(list(publish_args_with_seq_no())) :: term()
 
@@ -229,9 +229,16 @@ defmodule RabbitMQ.Producer do
     connection = Keyword.fetch!(supervisor_opts, :connection)
     counter = Keyword.fetch!(supervisor_opts, :counter)
     exchange = Keyword.fetch!(supervisor_opts, :exchange)
+    name = Keyword.fetch!(supervisor_opts, :name)
     worker_count = Keyword.fetch!(supervisor_opts, :worker_count)
     worker = Keyword.fetch!(supervisor_opts, :worker)
     worker_pool = Keyword.fetch!(supervisor_opts, :worker_pool)
+
+    handle_publisher_ack_confirms =
+      get_publisher_confirm_callback(name, :handle_publisher_ack_confirms)
+
+    handle_publisher_nack_confirms =
+      get_publisher_confirm_callback(name, :handle_publisher_nack_confirms)
 
     # _ = :ets.new(ets_counter, [:named_table, :public, write_concurrency: true, read_concurrency: true])
 
@@ -245,6 +252,8 @@ defmodule RabbitMQ.Producer do
     worker_pool_opts = [
       connection: connection,
       exchange: exchange,
+      handle_publisher_ack_confirms: handle_publisher_ack_confirms,
+      handle_publisher_nack_confirms: handle_publisher_nack_confirms,
       name: worker_pool,
       worker: worker,
       worker_count: worker_count
@@ -263,5 +272,31 @@ defmodule RabbitMQ.Producer do
     ]
 
     Supervisor.init(children, strategy: :rest_for_one)
+  end
+
+  defp get_publisher_confirm_callback(module, :handle_publisher_ack_confirms = fun) do
+    case function_exported?(module, fun, 1) do
+      true -> fn events -> apply(module, fun, [events]) end
+      false -> &handle_acks/1
+    end
+  end
+
+  defp get_publisher_confirm_callback(module, :handle_publisher_nack_confirms = fun) do
+    case function_exported?(module, fun, 1) do
+      true -> fn events -> apply(module, fun, [events]) end
+      false -> &handle_nacks/1
+    end
+  end
+
+  defp handle_acks(events) do
+    Enum.map(events, fn {seq_number, _routing_key, _data, _opts} ->
+      Logger.debug("Publisher acknowledged #{seq_number}.")
+    end)
+  end
+
+  defp handle_nacks(events) do
+    Enum.map(events, fn {seq_number, _routing_key, _data, _opts} ->
+      Logger.error("Publisher negatively acknowledged #{seq_number}.")
+    end)
   end
 end
