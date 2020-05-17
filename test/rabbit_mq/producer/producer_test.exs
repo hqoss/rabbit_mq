@@ -8,7 +8,11 @@ defmodule RabbitMQTest.Producer do
   require Logger
 
   defmodule ProducerWithCallbacks do
-    use Producer, exchange: "#{__MODULE__}"
+    @exchange "#{__MODULE__}"
+
+    use Producer, exchange: @exchange
+
+    def exchange, do: @exchange
 
     def handle_publisher_ack_confirms(events) do
       Enum.map(events, fn {seq_number, _routing_key, _data, _opts} ->
@@ -221,5 +225,27 @@ defmodule RabbitMQTest.Producer do
   test "max_workers/0 retrieves the :max_channels_per_connection config" do
     assert Application.get_env(:rabbit_mq, :max_channels_per_connection, 8) ===
              Producer.max_workers()
+  end
+
+  test "when used, child_spec/1 returns correctly configured child specification" do
+    exchange = ProducerWithCallbacks.exchange()
+
+    assert %{
+             id: ProducerWithCallbacks,
+             start:
+               {RabbitMQ.Producer, :start_link,
+                [
+                  [
+                    connection: ProducerWithCallbacks.Connection,
+                    counter: ProducerWithCallbacks.Counter,
+                    exchange: ^exchange,
+                    name: ProducerWithCallbacks,
+                    worker: ProducerWithCallbacks.Worker,
+                    worker_count: 3,
+                    worker_pool: ProducerWithCallbacks.WorkerPool
+                  ]
+                ]},
+             type: :supervisor
+           } = ProducerWithCallbacks.child_spec([])
   end
 end

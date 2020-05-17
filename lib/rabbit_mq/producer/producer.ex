@@ -130,7 +130,7 @@ defmodule RabbitMQ.Producer do
           worker_pool: @worker_pool
         ]
 
-        Producer.child_spec(opts)
+        Supervisor.child_spec({Producer, opts}, id: @name)
       end
 
       @doc """
