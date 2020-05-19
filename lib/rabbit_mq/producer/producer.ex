@@ -66,6 +66,8 @@ defmodule RabbitMQ.Producer do
   The following options can be used with `RabbitMQ.Producer`;
 
   * `:exchange`; messages will be published onto this exchange. **Required**.
+  * `:max_overflow`; temporarily add workers if needed. Defaults to `0`.
+  * `:publish_timeout`; when reached, the pool will not accept any new requests until the next process finishes. Defaults to `500`.
   * `:worker_count`; number of workers to be spawned. Defaults to `3`.
   """
   defmacro __using__(opts) do
@@ -75,12 +77,12 @@ defmodule RabbitMQ.Producer do
       @behaviour Producer
 
       @connection __MODULE__.Connection
-      @counter __MODULE__.Counter
       @name __MODULE__
       @worker_pool __MODULE__.WorkerPool
-      @worker __MODULE__.Worker
 
       @exchange Keyword.fetch!(unquote(opts), :exchange)
+      @max_overflow Keyword.get(unquote(opts), :max_overflow, 0)
+      @publish_timeout Keyword.get(unquote(opts), :publish_timeout, 500)
       @worker_count Keyword.get(unquote(opts), :worker_count, 3)
 
       @doc """
@@ -105,10 +107,9 @@ defmodule RabbitMQ.Producer do
 
         opts = [
           connection: @connection,
-          counter: @counter,
           exchange: @exchange,
+          max_overflow: @max_overflow,
           name: @name,
-          worker: @worker,
           worker_count: @worker_count,
           worker_pool: @worker_pool
         ]
@@ -122,14 +123,14 @@ defmodule RabbitMQ.Producer do
       @impl true
       def publish(routing_key, data, opts)
           when is_binary(routing_key) and is_binary(data) and is_list(opts) do
-        Producer.dispatch({routing_key, data, opts}, @counter, @worker, @worker_count)
+        Producer.publish({routing_key, data, opts}, @worker_pool, @publish_timeout)
       end
     end
   end
 
-  alias AMQP.Basic
-  alias RabbitMQ.Connection
-  alias RabbitMQ.Producer.WorkerPool
+  use AMQP
+  alias RabbitMQ.Connection, as: DedicatedConnection
+  alias RabbitMQ.Producer.Worker
 
   use Supervisor
 
@@ -137,9 +138,7 @@ defmodule RabbitMQ.Producer do
 
   @this_module __MODULE__
 
-  @supervisor_opts ~w(connection counter exchange name worker worker_count worker_pool)a
-  @offset_key :offset
-  @reset_counter_threshold 100_000
+  @opts ~w(connection exchange max_overflow name worker_count worker_pool)a
 
   @type seq_no :: integer()
   @type routing_key :: String.t()
@@ -162,31 +161,19 @@ defmodule RabbitMQ.Producer do
   """
   @spec start_link(keyword()) :: GenServer.on_start()
   def start_link(opts) do
+    opts = Keyword.take(opts, @opts)
     name = Keyword.fetch!(opts, :name)
-    supervisor_opts = Keyword.take(opts, @supervisor_opts)
 
-    Supervisor.start_link(@this_module, supervisor_opts, name: name)
+    Supervisor.start_link(@this_module, opts, name: name)
   end
 
-  @doc """
-  Sends a `:publish` message to a worker. Implements round-robin dispatch mechanism.
-  """
-  @spec dispatch(publish_args(), module(), module(), integer()) :: publish_result()
-  def dispatch({routing_key, data, opts}, counter, worker, worker_count) do
-    next = :ets.update_counter(counter, @offset_key, 1)
-
-    # Reset the counter once it's above the threshold to prevent
-    # performance degradation over time, e.g. when using `rem/2`.
-    if next > @reset_counter_threshold do
-      _reset = :ets.update_counter(counter, @offset_key, -next)
-    end
-
-    # Round-robin dispatch using the module name seems
-    # to be the fastest and least intrusive way.
-    index = rem(next, worker_count)
-    worker = Module.concat(worker, "#{index}")
-
-    GenServer.call(worker, {:publish, routing_key, data, opts})
+  @spec publish(publish_args(), module(), integer()) :: publish_result()
+  def publish({routing_key, data, opts}, worker_pool, publish_timeout) do
+    :poolboy.transaction(
+      worker_pool,
+      fn pid -> GenServer.call(pid, {:publish, routing_key, data, opts}) end,
+      publish_timeout
+    )
   end
 
   @doc """
@@ -208,14 +195,13 @@ defmodule RabbitMQ.Producer do
   ######################
 
   @impl true
-  def init(supervisor_opts) do
-    connection = Keyword.fetch!(supervisor_opts, :connection)
-    counter = Keyword.fetch!(supervisor_opts, :counter)
-    exchange = Keyword.fetch!(supervisor_opts, :exchange)
-    name = Keyword.fetch!(supervisor_opts, :name)
-    worker_count = Keyword.fetch!(supervisor_opts, :worker_count)
-    worker = Keyword.fetch!(supervisor_opts, :worker)
-    worker_pool = Keyword.fetch!(supervisor_opts, :worker_pool)
+  def init(opts) do
+    connection = Keyword.fetch!(opts, :connection)
+    exchange = Keyword.fetch!(opts, :exchange)
+    max_overflow = Keyword.fetch!(opts, :max_overflow)
+    name = Keyword.fetch!(opts, :name)
+    worker_count = Keyword.fetch!(opts, :worker_count)
+    worker_pool = Keyword.fetch!(opts, :worker_pool)
 
     handle_publisher_ack_confirms =
       get_publisher_confirm_callback(name, :handle_publisher_ack_confirms)
@@ -223,33 +209,30 @@ defmodule RabbitMQ.Producer do
     handle_publisher_nack_confirms =
       get_publisher_confirm_callback(name, :handle_publisher_nack_confirms)
 
-    # _ = :ets.new(ets_counter, [:named_table, :public, write_concurrency: true, read_concurrency: true])
-
-    # No need for write or read concurrency as we are not using
-    # this table to write or read more than one key.
-    _ = :ets.new(counter, [:named_table, :public])
-    _ = :ets.insert(counter, {@offset_key, -1})
-
     connection_opts = [max_channels: worker_count, name: connection]
 
     worker_pool_opts = [
+      name: {:local, worker_pool},
+      worker_module: Worker,
+      size: worker_count,
+      max_overflow: max_overflow
+    ]
+
+    worker_opts = [
       connection: connection,
       exchange: exchange,
       handle_publisher_ack_confirms: handle_publisher_ack_confirms,
-      handle_publisher_nack_confirms: handle_publisher_nack_confirms,
-      name: worker_pool,
-      worker: worker,
-      worker_count: worker_count
+      handle_publisher_nack_confirms: handle_publisher_nack_confirms
     ]
 
     children = [
       %{
         id: :connection,
-        start: {Connection, :start_link, [connection_opts]}
+        start: {DedicatedConnection, :start_link, [connection_opts]}
       },
       %{
         id: :worker_pool,
-        start: {WorkerPool, :start_link, [worker_pool_opts]},
+        start: {:poolboy, :start_link, [worker_pool_opts, worker_opts]},
         type: :supervisor
       }
     ]
