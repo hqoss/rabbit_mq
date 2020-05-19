@@ -6,10 +6,16 @@ defmodule RabbitMQTest.Producer.Worker do
 
   @amqp_url Application.get_env(:rabbit_mq, :amqp_url)
 
-  @connection __MODULE__.Connection
+  @data :crypto.strong_rand_bytes(2_000) |> Base.encode64()
   @exchange "#{__MODULE__}"
+  @routing_key :crypto.strong_rand_bytes(16) |> Base.encode16()
 
-  @base_opts [connection: @connection, exchange: @exchange]
+  @connection __MODULE__.Connection
+
+  @base_opts [
+    connection: @connection,
+    exchange: @exchange
+  ]
 
   setup_all do
     assert {:ok, _pid} = start_supervised({RabbitMQ.Connection, [name: @connection]})
@@ -18,41 +24,32 @@ defmodule RabbitMQTest.Producer.Worker do
     assert {:ok, channel} = Channel.open(connection)
 
     # Ensure we have a disposable exchange set up.
-    assert :ok = Exchange.declare(channel, @exchange, :topic, durable: false)
-
-    # Declare an exclusive queue and bind it to the above exchange.
-    {:ok, %{queue: queue}} = Queue.declare(channel, "", exclusive: true)
-    :ok = Queue.bind(channel, queue, @exchange, routing_key: "#")
-
-    # Declare opts with default publisher confirm callbacks.
-    opts =
-      @base_opts
-      |> Keyword.put(:handle_publisher_ack_confirms, fn _ -> :ok end)
-      |> Keyword.put(:handle_publisher_nack_confirms, fn _ -> :ok end)
+    assert :ok = Exchange.declare(channel, @exchange, :direct, durable: false)
 
     # Clean up after all tests have ran.
     on_exit(fn ->
-      # This queue would have been deleted automatically when the connection
-      # gets closed, however we manually delete it to avoid any naming conflicts
-      # in between tests, no matter how unlikely. Also, we ensure there are no
-      # messages left hanging in the queue.
-      assert {:ok, %{message_count: 0}} = Queue.delete(channel, queue)
-
       assert :ok = Exchange.delete(channel, @exchange)
       assert :ok = Channel.close(channel)
       assert :ok = Connection.close(connection)
     end)
 
-    [channel: channel, opts: opts, queue: queue]
+    [channel: channel]
   end
 
-  setup %{channel: channel, queue: queue} do
-    on_exit(fn ->
-      # Ensure there are no messages in the queue as the next test is about to start.
-      assert true = Queue.empty?(channel, queue)
-    end)
+  setup do
+    test_pid = self()
 
-    [correlation_id: UUID.uuid4()]
+    # Declare opts with default publisher confirm callbacks.
+    opts =
+      @base_opts
+      |> Keyword.put(:handle_publisher_ack_confirms, fn events ->
+        send(test_pid, {:ack, events})
+      end)
+      |> Keyword.put(:handle_publisher_nack_confirms, fn events ->
+        send(test_pid, {:nack, events})
+      end)
+
+    [correlation_id: UUID.uuid4(), opts: opts]
   end
 
   test "start_link/1 starts a worker and establishes a dedicated channel", %{
@@ -72,9 +69,12 @@ defmodule RabbitMQTest.Producer.Worker do
   test "publishes a message", %{
     channel: channel,
     correlation_id: correlation_id,
-    opts: opts,
-    queue: queue
+    opts: opts
   } do
+    # Declare an exclusive queue.
+    {:ok, %{queue: queue}} = Queue.declare(channel, "", exclusive: true)
+    :ok = Queue.bind(channel, queue, @exchange, routing_key: @routing_key)
+
     assert {:ok, pid} = start_supervised({Worker, opts})
 
     # Start receiving Consumer events.
@@ -85,17 +85,19 @@ defmodule RabbitMQTest.Producer.Worker do
 
     publish_opts = [correlation_id: correlation_id]
 
-    assert {:ok, seq_no} = GenServer.call(pid, {:publish, "routing_key", "data", publish_opts})
+    assert {:ok, seq_no} = GenServer.call(pid, {:publish, @routing_key, @data, publish_opts})
 
     assert_receive(
-      {:basic_deliver, "data",
+      {:basic_deliver, @data,
        %{
          consumer_tag: ^consumer_tag,
          correlation_id: ^correlation_id,
          delivery_tag: ^seq_no,
-         routing_key: "routing_key"
+         routing_key: @routing_key
        }}
     )
+
+    assert_receive({:ack, [{^seq_no, @routing_key, @data, ^publish_opts}]})
 
     # Unsubscribe.
     Basic.cancel(channel, consumer_tag)
@@ -105,6 +107,12 @@ defmodule RabbitMQTest.Producer.Worker do
 
     # Ensure no further messages are received.
     refute_receive(_)
+
+    # This queue would have been deleted automatically when the connection
+    # gets closed, however we manually delete it to avoid any naming conflicts
+    # in between tests, no matter how unlikely. Also, we ensure there are no
+    # messages left hanging in the queue.
+    assert {:ok, %{message_count: 0}} = Queue.delete(channel, queue)
   end
 
   test "[only item] publisher confirm event confirms a single outstanding confirm", %{

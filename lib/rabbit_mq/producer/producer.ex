@@ -253,16 +253,4 @@ defmodule RabbitMQ.Producer do
       false -> fn _ -> :ok end
     end
   end
-
-  # defp handle_acks(events) do
-  #   Enum.map(events, fn {seq_number, _routing_key, _data, _opts} ->
-  #     Logger.debug("Publisher acknowledged #{seq_number}.")
-  #   end)
-  # end
-
-  # defp handle_nacks(events) do
-  #   Enum.map(events, fn {seq_number, _routing_key, _data, _opts} ->
-  #     Logger.error("Publisher negatively acknowledged #{seq_number}.")
-  #   end)
-  # end
 end
