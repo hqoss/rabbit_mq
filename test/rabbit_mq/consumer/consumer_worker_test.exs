@@ -70,7 +70,6 @@ defmodule RabbitMQTest.Consumer.Worker do
       assert channel.conn === GenServer.call(@connection, :get)
     end
 
-    @tag :wip
     test "starts a consumer, declares and uses an exclusive queue, invokes consume_cb when message is received",
          %{
            channel: channel,
@@ -100,7 +99,6 @@ defmodule RabbitMQTest.Consumer.Worker do
       refute_receive(_)
     end
 
-    @tag :wip
     test "starts a consumer, declares and uses an exclusive queue with opts, invokes consume_cb when message is received",
          %{
            channel: channel,
@@ -198,51 +196,50 @@ defmodule RabbitMQTest.Consumer.Worker do
       refute_receive(_)
     end
 
-    # @tag :wip
-    # test "starts a consumer, uses a pre-defined queue, invokes consume_cb when message is received",
-    #      %{
-    #        correlation_id: correlation_id,
-    #        opts: opts
-    #      } do
-    #   # Declare an exclusive queue.
-    #   # Must be bound to the connection our consumer will be using.
-    #   connection = GenServer.call(@connection, :get)
-    #   {:ok, channel} = Channel.open(connection)
+    test "starts a consumer, uses a pre-defined queue, invokes consume_cb when message is received",
+         %{
+           correlation_id: correlation_id,
+           opts: opts
+         } do
+      # Declare an exclusive queue.
+      # Must be bound to the connection our consumer will be using.
+      connection = GenServer.call(@connection, :get)
+      {:ok, channel} = Channel.open(connection)
 
-    #   {:ok, %{queue: queue}} = Queue.declare(channel, "", exclusive: true)
-    #   :ok = Queue.bind(channel, queue, @exchange, routing_key: @routing_key)
+      {:ok, %{queue: queue}} = Queue.declare(channel, "", exclusive: true)
+      :ok = Queue.bind(channel, queue, @exchange, routing_key: @routing_key)
 
-    #   opts = Keyword.put(opts, :queue, queue)
-    #   assert {:ok, pid} = start_supervised({Worker, opts}, restart: :temporary)
+      opts = Keyword.put(opts, :queue, queue)
+      assert {:ok, pid} = start_supervised({Worker, opts}, restart: :temporary)
 
-    #   assert %Worker.State{consumer_tag: consumer_tag} = :sys.get_state(pid)
+      assert %Worker.State{consumer_tag: consumer_tag} = :sys.get_state(pid)
 
-    #   assert :ok =
-    #            Basic.publish(channel, @exchange, @routing_key, @data,
-    #              correlation_id: correlation_id
-    #            )
+      assert :ok =
+               Basic.publish(channel, @exchange, @routing_key, @data,
+                 correlation_id: correlation_id
+               )
 
-    #   assert_receive(
-    #     {@data,
-    #      %{
-    #        correlation_id: ^correlation_id,
-    #        consumer_tag: consumer_tag,
-    #        exchange: @exchange,
-    #        routing_key: @routing_key
-    #      }}
-    #   )
+      assert_receive(
+        {@data,
+         %{
+           correlation_id: ^correlation_id,
+           consumer_tag: consumer_tag,
+           exchange: @exchange,
+           routing_key: @routing_key
+         }}
+      )
 
-    #   # Ensure no further messages are received.
-    #   refute_receive(_)
+      # Ensure no further messages are received.
+      refute_receive(_)
 
-    #   # This queue would have been deleted automatically when the connection
-    #   # gets closed, however we manually delete it to avoid any naming conflicts
-    #   # in between tests, no matter how unlikely. Also, we ensure there are no
-    #   # messages left hanging in the queue.
-    #   assert {:ok, %{message_count: 0}} = Queue.delete(channel, queue)
+      # This queue would have been deleted automatically when the connection
+      # gets closed, however we manually delete it to avoid any naming conflicts
+      # in between tests, no matter how unlikely. Also, we ensure there are no
+      # messages left hanging in the queue.
+      assert {:ok, %{message_count: 0}} = Queue.delete(channel, queue)
 
-    #   assert :ok = Channel.close(channel)
-    # end
+      assert :ok = Channel.close(channel)
+    end
 
     test "when a monitored process dies, an instruction to stop the GenServer is returned", %{
       opts: opts
