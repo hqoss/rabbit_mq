@@ -242,14 +242,14 @@ defmodule RabbitMQ.Producer do
 
   defp get_publisher_confirm_callback(module, :handle_publisher_ack_confirms = fun) do
     case function_exported?(module, fun, 1) do
-      true -> fn events -> apply(module, fun, [events]) end
+      true -> fn events -> module.handle_publisher_ack_confirms(events) end
       false -> &handle_acks/1
     end
   end
 
   defp get_publisher_confirm_callback(module, :handle_publisher_nack_confirms = fun) do
     case function_exported?(module, fun, 1) do
-      true -> fn events -> apply(module, fun, [events]) end
+      true -> fn events -> module.handle_publisher_nack_confirms(events) end
       false -> &handle_nacks/1
     end
   end
