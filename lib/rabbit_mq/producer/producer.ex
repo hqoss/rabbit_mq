@@ -243,26 +243,26 @@ defmodule RabbitMQ.Producer do
   defp get_publisher_confirm_callback(module, :handle_publisher_ack_confirms = fun) do
     case function_exported?(module, fun, 1) do
       true -> fn events -> module.handle_publisher_ack_confirms(events) end
-      false -> &handle_acks/1
+      false -> fn _ -> :ok end
     end
   end
 
   defp get_publisher_confirm_callback(module, :handle_publisher_nack_confirms = fun) do
     case function_exported?(module, fun, 1) do
       true -> fn events -> module.handle_publisher_nack_confirms(events) end
-      false -> &handle_nacks/1
+      false -> fn _ -> :ok end
     end
   end
 
-  defp handle_acks(events) do
-    Enum.map(events, fn {seq_number, _routing_key, _data, _opts} ->
-      Logger.debug("Publisher acknowledged #{seq_number}.")
-    end)
-  end
+  # defp handle_acks(events) do
+  #   Enum.map(events, fn {seq_number, _routing_key, _data, _opts} ->
+  #     Logger.debug("Publisher acknowledged #{seq_number}.")
+  #   end)
+  # end
 
-  defp handle_nacks(events) do
-    Enum.map(events, fn {seq_number, _routing_key, _data, _opts} ->
-      Logger.error("Publisher negatively acknowledged #{seq_number}.")
-    end)
-  end
+  # defp handle_nacks(events) do
+  #   Enum.map(events, fn {seq_number, _routing_key, _data, _opts} ->
+  #     Logger.error("Publisher negatively acknowledged #{seq_number}.")
+  #   end)
+  # end
 end
