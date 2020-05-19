@@ -118,28 +118,29 @@ defmodule RabbitMQ.Consumer do
 
   defmacro __using__(opts) do
     quote do
-      alias AMQP.{Basic, Channel}
       alias RabbitMQ.Consumer
 
-      import Basic, only: [ack: 2, ack: 3, nack: 2, nack: 3, reject: 2, reject: 3]
-
-      require Logger
-
-      @prefetch_count Keyword.get(unquote(opts), :prefetch_count, 10)
-      @queue Keyword.fetch!(unquote(opts), :queue)
-      @worker_count Keyword.get(unquote(opts), :worker_count, 3)
-      @this_module __MODULE__
+      import AMQP.Basic, only: [ack: 2, ack: 3, nack: 2, nack: 3, reject: 2, reject: 3]
 
       @behaviour Consumer
 
-      ##############
-      # Public API #
-      ##############
+      @connection __MODULE__.Connection
+      @name __MODULE__
+      @worker_pool __MODULE__.WorkerPool
 
-      def child_spec(opts) do
-        if @worker_count > max_workers() do
+      @queue Keyword.fetch!(unquote(opts), :queue)
+      @prefetch_count Keyword.get(unquote(opts), :prefetch_count, 10)
+      @worker_count Keyword.get(unquote(opts), :worker_count, 3)
+
+      @doc """
+      Calls `RabbitMQ.Consumer.child_spec/1` with scoped `opts`.
+      """
+      def child_spec(_) do
+        max_workers = Consumer.max_workers()
+
+        if @worker_count > max_workers do
           raise """
-          Cannot start #{@worker_count} workers, maximum is #{max_workers()}.
+          Cannot start #{@worker_count} workers, maximum is #{max_workers}.
 
           You can configure this value as shown below;
 
@@ -151,210 +152,106 @@ defmodule RabbitMQ.Consumer do
           """
         end
 
-        config = %{
+        opts = [
+          connection: @connection,
           consume_cb: &handle_message/3,
-          prefetch_count: @prefetch_count,
+          name: @name,
           queue: @queue,
-          worker_count: @worker_count
-        }
+          prefetch_count: @prefetch_count,
+          worker_count: @worker_count,
+          worker_pool: @worker_pool
+        ]
 
-        opts = Keyword.put_new(opts, :name, @this_module)
-
-        # Read more about child specification:
-        # https://hexdocs.pm/elixir/Supervisor.html#module-child-specification
-        %{
-          id: @this_module,
-          start: {Consumer, :start_link, [config, opts]},
-          type: :supervisor,
-          # Read more about restart values:
-          # https://hexdocs.pm/elixir/Supervisor.html#module-restart-values-restart
-          restart: :permanent,
-          # Read more about shutdown values:
-          # https://hexdocs.pm/elixir/Supervisor.html#module-shutdown-values-shutdown
-          shutdown: :brutal_kill
-        }
+        Supervisor.child_spec({Consumer, opts}, id: @name)
       end
-
-      #####################
-      # Private Functions #
-      #####################
-
-      defp max_workers, do: Application.get_env(:rabbit_mq, :max_channels_per_connection, 8)
     end
   end
 
-  alias AMQP.{Channel, Connection, Queue}
+  alias RabbitMQ.Connection, as: DedicatedConnection
   alias RabbitMQ.Consumer.Worker
+
+  use AMQP
+  use Supervisor
 
   require Logger
 
-  use GenServer
-
   @this_module __MODULE__
+
+  @opts ~w(connection consume_cb exchange name queue prefetch_count worker_count worker_pool)a
 
   @type payload :: String.t()
   @type meta :: map()
   @type channel :: Channel.t()
-  @type result :: term()
 
-  @callback handle_message(payload(), meta(), channel()) :: result()
-
-  defmodule State do
-    @moduledoc """
-    The internal state held in the `RabbitMQ.Consumer` server.
-
-    * `:connection`;
-        holds the dedicated `AMQP.Connection`.
-    * `:workers`;
-        the children started under the server. The server acts as a `Supervisor`.
-    """
-
-    @enforce_keys [:connection, :workers]
-    defstruct connection: nil, workers: []
-  end
-
-  ##############
-  # Public API #
-  ##############
+  @callback handle_message(payload(), meta(), channel()) :: term()
 
   @doc """
-  Starts this module as a process via `GenServer.start_link/3`.
-
-  Only used by the module's `child_spec`.
+  Starts a named `Supervisor`, internally managing a dedicated
+  `AMQP.Connection` as well a dedicated `RabbitMQ.Consumer.WorkerPool`.
   """
-  @spec start_link(map(), keyword()) :: GenServer.on_start()
-  def start_link(config, opts) do
-    GenServer.start_link(@this_module, config, opts)
+  @spec start_link(keyword()) :: GenServer.on_start()
+  def start_link(opts) do
+    opts = Keyword.take(opts, @opts)
+    name = Keyword.fetch!(opts, :name)
+
+    Supervisor.start_link(@this_module, opts, name: name)
   end
+
+  @doc """
+  Retrieves the application-level limit on how many channels
+  can be opened per connection. Can be configured via
+  `:rabbit_mq, :max_channels_per_connection`.
+
+  If not set in config, defaults to `8`.
+
+  As a rule of thumb, most applications can use a single digit number of channels per connection.
+
+  For details, please consult the official RabbitMQ docs: https://www.rabbitmq.com/channels.html#channel-max.
+  """
+  @spec max_workers() :: integer()
+  def max_workers, do: Application.get_env(:rabbit_mq, :max_channels_per_connection, 8)
 
   ######################
   # Callback Functions #
   ######################
 
   @impl true
-  def init(config) do
-    Process.flag(:trap_exit, true)
+  def init(opts) do
+    connection = Keyword.fetch!(opts, :connection)
+    consume_cb = Keyword.fetch!(opts, :consume_cb)
+    queue = Keyword.fetch!(opts, :queue)
+    prefetch_count = Keyword.fetch!(opts, :prefetch_count)
+    worker_count = Keyword.fetch!(opts, :worker_count)
+    worker_pool = Keyword.fetch!(opts, :worker_pool)
 
-    # Each worker pool will maintain and monitor its own connection.
-    {:ok, connection} = connect()
+    connection_opts = [max_channels: worker_count, name: connection]
 
-    {:ok, queue} = declare_queue_if_exclusive(config.queue, connection)
+    worker_pool_opts = [
+      name: {:local, worker_pool},
+      worker_module: Worker,
+      size: worker_count,
+      max_overflow: 0
+    ]
 
-    config = Map.replace!(config, :queue, queue)
+    worker_opts = [
+      connection: connection,
+      consume_cb: consume_cb,
+      queue: queue,
+      prefetch_count: prefetch_count
+    ]
 
-    workers =
-      1..config.worker_count
-      |> Enum.with_index()
-      |> Enum.map(fn {_, index} -> start_worker(index, config, connection) end)
+    children = [
+      %{
+        id: :connection,
+        start: {DedicatedConnection, :start_link, [connection_opts]}
+      },
+      %{
+        id: :worker_pool,
+        start: {:poolboy, :start_link, [worker_pool_opts, worker_opts]},
+        type: :supervisor
+      }
+    ]
 
-    {:ok, %State{connection: connection, workers: workers}}
+    Supervisor.init(children, strategy: :rest_for_one)
   end
-
-  @impl true
-  def handle_info({:DOWN, _, :process, _pid, reason}, %State{} = state) do
-    Logger.warn("Connection to broker lost due to #{inspect(reason)}.")
-
-    # Stop GenServer; will be restarted by Supervisor. Linked processes will be terminated,
-    # and all channels implicitly closed due to the connection process being down.
-    {:stop, {:connection_lost, reason}, %{state | connection: nil}}
-  end
-
-  @impl true
-  def handle_info(
-        {:EXIT, from, reason},
-        %State{connection: connection, workers: workers} = state
-      ) do
-    Logger.warn("Consumer worker process terminated due to #{inspect(reason)}. Restarting.")
-
-    {index, _old_pid, config} = Enum.find(workers, fn {_index, pid, _config} -> pid === from end)
-
-    # Clean up, new channel will be established in `start_worker/3`.
-    :ok = Channel.close(config.channel)
-
-    updated_workers = List.replace_at(workers, index, start_worker(index, config, connection))
-
-    {:noreply, %{state | workers: updated_workers}}
-  end
-
-  @doc """
-  Invoked when the server is about to exit. It should do any cleanup required.
-  See https://hexdocs.pm/elixir/GenServer.html#c:terminate/2 for more details.
-  """
-  @impl true
-  def terminate(reason, %State{connection: connection} = state) do
-    Logger.warn("Terminating Producer pool: #{inspect(reason)}. Closing connection.")
-
-    case connection do
-      %Connection{} -> Connection.close(connection)
-      nil -> :ok
-    end
-
-    {:noreply, %{state | connection: nil}}
-  end
-
-  #####################
-  # Private Functions #
-  #####################
-
-  defp connect do
-    opts = [channel_max: max_channels(), heartbeat: heartbeat_interval_sec()]
-
-    amqp_url()
-    |> Connection.open(opts)
-    |> case do
-      {:ok, connection} ->
-        # Get notifications when the connection goes down
-        Process.monitor(connection.pid)
-        {:ok, connection}
-
-      {:error, error} ->
-        Logger.error("Failed to connect to broker due to #{inspect(error)}. Retrying...")
-        :timer.sleep(reconnect_interval_ms())
-        connect()
-    end
-  end
-
-  defp declare_queue_if_exclusive({exchange, routing_key, queue_name, opts}, connection)
-       when is_binary(queue_name) and is_list(opts),
-       do: declare_queue({exchange, routing_key, queue_name, opts}, connection)
-
-  defp declare_queue_if_exclusive({exchange, routing_key, queue_name}, connection)
-       when is_binary(queue_name),
-       do: declare_queue({exchange, routing_key, queue_name, []}, connection)
-
-  defp declare_queue_if_exclusive({exchange, routing_key, opts}, connection)
-       when is_list(opts),
-       do: declare_queue({exchange, routing_key, "", opts}, connection)
-
-  defp declare_queue_if_exclusive({exchange, routing_key}, connection),
-    do: declare_queue({exchange, routing_key, "", []}, connection)
-
-  defp declare_queue_if_exclusive(queue, _connection) when is_binary(queue), do: {:ok, queue}
-
-  defp declare_queue({exchange, routing_key, queue_name, opts}, connection) do
-    {:ok, channel} = Channel.open(connection)
-    opts = Keyword.put(opts, :exclusive, true)
-    {:ok, %{queue: queue_name}} = Queue.declare(channel, queue_name, opts)
-    :ok = Queue.bind(channel, queue_name, exchange, routing_key: routing_key)
-    :ok = Channel.close(channel)
-    {:ok, queue_name}
-  end
-
-  defp start_worker(index, config, connection) do
-    {:ok, channel} = Channel.open(connection)
-
-    config =
-      config
-      |> Map.put(:channel, channel)
-      |> Map.take(~w(channel consume_cb prefetch_count queue)a)
-
-    {:ok, pid} = Worker.start_link(config)
-
-    {index, pid, config}
-  end
-
-  defp amqp_url, do: Application.fetch_env!(:rabbit_mq, :amqp_url)
-  defp heartbeat_interval_sec, do: Application.get_env(:rabbit_mq, :heartbeat_interval_sec, 30)
-  defp reconnect_interval_ms, do: Application.get_env(:rabbit_mq, :reconnect_interval_ms, 2500)
-  defp max_channels, do: Application.get_env(:rabbit_mq, :max_channels_per_connection, 8)
 end

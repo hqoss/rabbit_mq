@@ -1,244 +1,137 @@
 defmodule RabbitMQTest.Consumer do
-  alias AMQP.{Basic, Channel, Connection, Exchange, Queue}
   alias RabbitMQ.Consumer
-  alias RabbitMQ.Consumer.Worker.State, as: ConsumerWorkerState
 
+  use AMQP
   use ExUnit.Case
 
+  defmodule ConsumerWithCallback do
+    @queue "#{__MODULE__}"
+    @prefetch_count :rand.uniform(10)
+    @worker_count :rand.uniform(8)
+
+    use Consumer, prefetch_count: @prefetch_count, queue: @queue, worker_count: @worker_count
+
+    def queue, do: @queue
+    def prefetch_count, do: @prefetch_count
+    def worker_count, do: @worker_count
+
+    def handle_message(_data, _meta, _channel), do: :ok
+  end
+
   @amqp_url Application.get_env(:rabbit_mq, :amqp_url)
+
   @exchange "#{__MODULE__}"
-  @routing_key "test.consumer"
+  @routing_key :crypto.strong_rand_bytes(16) |> Base.encode16()
+
+  @connection __MODULE__.Connection
+  @name __MODULE__
+  @prefetch_count :rand.uniform(10)
+  @worker_count :rand.uniform(8)
+  @worker_pool __MODULE__.WorkerPool
+
+  @base_opts [
+    connection: @connection,
+    name: @name,
+    prefetch_count: @prefetch_count,
+    queue: {@exchange, @routing_key},
+    worker_count: @worker_count,
+    worker_pool: @worker_pool
+  ]
 
   setup_all do
     assert {:ok, connection} = Connection.open(@amqp_url)
     assert {:ok, channel} = Channel.open(connection)
 
     # Ensure we have a disposable exchange set up.
-    assert :ok = Exchange.declare(channel, @exchange, :topic, durable: false)
-
-    # Declare a queue and bind it to the above exchange exchange.
-    {:ok, %{queue: queue}} = Queue.declare(channel, "")
-    :ok = Queue.bind(channel, queue, @exchange, routing_key: @routing_key)
+    assert :ok = Exchange.declare(channel, @exchange, :direct, durable: false)
 
     # Clean up after all tests have ran.
     on_exit(fn ->
-      # Ensure there are no messages left hanging in the queue as it gets deleted.
-      assert {:ok, %{message_count: 0}} = Queue.delete(channel, queue)
-
       assert :ok = Exchange.delete(channel, @exchange)
       assert :ok = Channel.close(channel)
       assert :ok = Connection.close(connection)
     end)
 
-    [channel: channel, connection: connection, queue: queue]
+    :ok
   end
 
-  setup %{channel: channel, queue: queue} do
-    correlation_id = UUID.uuid4()
+  setup do
+    test_pid = self()
 
-    on_exit(fn ->
-      # Ensure there are no messages in the queue as the next test is about to start.
-      assert true = Queue.empty?(channel, queue)
-    end)
+    # Declare opts with a default consume callback.
+    opts =
+      @base_opts
+      |> Keyword.put(:consume_cb, fn data, meta, channel ->
+        Basic.ack(channel, meta.delivery_tag)
+        send(test_pid, {data, meta})
+      end)
 
-    [correlation_id: correlation_id]
+    [opts: opts]
   end
 
-  describe "#{__MODULE__}" do
-    test "defines correctly configured child specification" do
-      defmodule TestConsumer do
-        use Consumer, queue: "test_queue"
+  test "start_link/1 starts a named Supervisor with a dedicated connection, and a worker pool", %{
+    opts: opts
+  } do
+    assert {:ok, pid} = start_supervised({Consumer, opts})
 
-        def handle_message(_payload, meta, channel), do: ack(channel, meta.delivery_tag)
-      end
+    assert {:state, {:local, @name}, :rest_for_one,
+            {[:worker_pool, :connection],
+             %{
+               connection:
+                 {:child, _connection_pid, :connection,
+                  {RabbitMQ.Connection, :start_link,
+                   [[max_channels: @worker_count, name: @connection]]}, :permanent, 5000, :worker,
+                  [RabbitMQ.Connection]},
+               worker_pool:
+                 {:child, _worker_pool_pid, :worker_pool,
+                  {:poolboy, :start_link,
+                   [
+                     [
+                       name: {:local, @worker_pool},
+                       worker_module: RabbitMQ.Consumer.Worker,
+                       size: @worker_count,
+                       max_overflow: 0
+                     ],
+                     [
+                       connection: @connection,
+                       consume_cb: consume_cb,
+                       queue: {@exchange, @routing_key},
+                       prefetch_count: @prefetch_count
+                     ]
+                   ]}, :permanent, :infinity, :supervisor, [:poolboy]}
+             }}, :undefined, 3, 5, [], 0, RabbitMQ.Consumer, ^opts} = :sys.get_state(pid)
 
-      assert %{
-               id: TestConsumer,
-               restart: :permanent,
-               shutdown: :brutal_kill,
-               start:
-                 {Consumer, :start_link,
+    assert consume_cb === opts[:consume_cb]
+  end
+
+  test "max_workers/0 retrieves the :max_channels_per_connection config" do
+    assert Application.get_env(:rabbit_mq, :max_channels_per_connection, 8) ===
+             Consumer.max_workers()
+  end
+
+  test "when used, child_spec/1 returns correctly configured child specification" do
+    queue = ConsumerWithCallback.queue()
+    prefetch_count = ConsumerWithCallback.prefetch_count()
+    worker_count = ConsumerWithCallback.worker_count()
+
+    assert %{
+             id: ConsumerWithCallback,
+             start:
+               {RabbitMQ.Consumer, :start_link,
+                [
                   [
-                    %{consume_cb: _, prefetch_count: 10, queue: "test_queue", worker_count: 3},
-                    [name: TestConsumer, opt: :extra_opt]
-                  ]},
-               type: :supervisor
-             } = TestConsumer.child_spec(opt: :extra_opt)
-    end
+                    connection: ConsumerWithCallback.Connection,
+                    consume_cb: consume_cb,
+                    name: ConsumerWithCallback,
+                    queue: ^queue,
+                    prefetch_count: ^prefetch_count,
+                    worker_count: ^worker_count,
+                    worker_pool: ConsumerWithCallback.WorkerPool
+                  ]
+                ]},
+             type: :supervisor
+           } = ConsumerWithCallback.child_spec([])
 
-    test "establishes a connection and starts the defined number of workers", %{queue: queue} do
-      config = %{
-        consume_cb: fn _payload, meta, channel -> Basic.ack(channel, meta.delivery_tag) end,
-        prefetch_count: 10,
-        queue: queue,
-        worker_count: 2
-      }
-
-      assert {:ok, pid} = Consumer.start_link(config, [])
-
-      assert %Consumer.State{
-               connection: %Connection{} = connection,
-               workers: [worker_1, worker_2]
-             } = :sys.get_state(pid)
-
-      assert true === Process.alive?(connection.pid)
-
-      assert {0, worker_1_pid, _worker_1_config} = worker_1
-      assert {1, worker_2_pid, _worker_2_config} = worker_2
-
-      assert worker_1_pid !== worker_2_pid
-
-      assert :ok = GenServer.stop(pid)
-    end
-
-    test "workers are assigned their own channels from a shared connection", %{queue: queue} do
-      config = %{
-        consume_cb: fn _payload, meta, channel -> Basic.ack(channel, meta.delivery_tag) end,
-        prefetch_count: 10,
-        queue: queue,
-        worker_count: 2
-      }
-
-      assert {:ok, pid} = Consumer.start_link(config, [])
-
-      assert %Consumer.State{
-               connection: %Connection{} = connection,
-               workers: [
-                 {0, worker_1_pid, _worker_1_config},
-                 {1, worker_2_pid, _worker_2_config}
-               ]
-             } = :sys.get_state(pid)
-
-      assert %ConsumerWorkerState{
-               channel: %Channel{} = worker_1_channel
-             } = :sys.get_state(worker_1_pid)
-
-      assert %ConsumerWorkerState{
-               channel: %Channel{} = worker_2_channel
-             } = :sys.get_state(worker_2_pid)
-
-      # The channels are different as they are specific to each worker.
-      assert worker_1_channel.pid !== worker_2_channel.pid
-
-      # The connections are the same as they originate in the same parent.
-      assert worker_1_channel.conn === worker_2_channel.conn
-      assert Enum.random([worker_1_channel.conn, worker_2_channel.conn]) === connection
-
-      assert :ok = GenServer.stop(pid)
-    end
-
-    test "if a worker dies, it is re-started with a new channel, and its original channel is closed",
-         %{queue: queue} do
-      config = %{
-        consume_cb: fn _payload, meta, channel -> Basic.ack(channel, meta.delivery_tag) end,
-        prefetch_count: 10,
-        queue: queue,
-        worker_count: 2
-      }
-
-      assert {:ok, pid} = Consumer.start_link(config, [])
-
-      assert %Consumer.State{
-               connection: connection,
-               workers: [
-                 {0, _worker_1_pid, _worker_1_config},
-                 {1, worker_2_pid, _worker_2_config}
-               ]
-             } = :sys.get_state(pid)
-
-      Process.exit(worker_2_pid, :kill)
-
-      # Wait until a new worker is spawned.
-      :timer.sleep(5)
-
-      assert %Consumer.State{
-               connection: ^connection,
-               workers: [
-                 {0, _worker_1_pid, _worker_1_config},
-                 {1, worker_3_pid, _worker_3_config}
-               ]
-             } = :sys.get_state(pid)
-
-      assert worker_2_pid !== worker_3_pid
-
-      assert :ok = GenServer.stop(pid)
-    end
-
-    test "if a connection dies, the entire Consumer pool re-starts", %{queue: queue} do
-      supervisor = __MODULE__.Supervisor
-      supervised_consumer = __MODULE__.SupervisedConsumer
-
-      config = %{
-        consume_cb: fn _payload, meta, channel -> Basic.ack(channel, meta.delivery_tag) end,
-        prefetch_count: 10,
-        queue: queue,
-        worker_count: 2
-      }
-
-      children = [
-        %{
-          id: supervisor,
-          start: {Consumer, :start_link, [config, [name: supervised_consumer]]}
-        }
-      ]
-
-      assert {:ok, pid} = Supervisor.start_link(children, strategy: :one_for_one)
-
-      consumer = Process.whereis(supervised_consumer)
-
-      assert %Consumer.State{
-               connection: connection,
-               workers: workers
-             } = :sys.get_state(consumer)
-
-      Process.exit(connection.pid, :kill)
-
-      # Wait until the child is re-started.
-      :timer.sleep(5)
-
-      new_consumer = Process.whereis(supervised_consumer)
-
-      assert consumer !== new_consumer
-
-      assert %Consumer.State{
-               connection: new_connection,
-               workers: new_workers
-             } = :sys.get_state(new_consumer)
-
-      assert connection.pid !== new_connection.pid
-      assert workers !== new_workers
-
-      assert :ok = Supervisor.stop(pid)
-    end
-
-    test "sets up an exclusive queue if requested", %{
-      channel: channel,
-      correlation_id: correlation_id
-    } do
-      # Capture current process pid to send a message to when `consume_cb` is called.
-      test_pid = self()
-      routing_key = "test.consumer.exclusive"
-
-      config = %{
-        consume_cb: fn payload, meta, channel ->
-          send(test_pid, {payload, meta})
-          Basic.ack(channel, meta.delivery_tag)
-        end,
-        prefetch_count: 1,
-        queue: {@exchange, routing_key},
-        worker_count: 1
-      }
-
-      assert {:ok, pid} = Consumer.start_link(config, [])
-
-      assert :ok =
-               Basic.publish(channel, @exchange, routing_key, "msg",
-                 correlation_id: correlation_id
-               )
-
-      assert_receive({"msg", %{correlation_id: ^correlation_id}})
-
-      assert :ok = GenServer.stop(pid)
-    end
+    assert :ok = consume_cb.(nil, nil, nil)
   end
 end

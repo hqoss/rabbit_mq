@@ -54,7 +54,6 @@ defmodule RabbitMQ.Connection do
   @impl true
   def handle_info({:DOWN, _, :process, _pid, reason}, %Connection{} = connection) do
     Logger.warn("Connection to broker lost due to #{inspect(reason)}.")
-
     # Stop GenServer; will be restarted by Supervisor.
     {:stop, {:connection_lost, reason}, connection}
   end
@@ -83,10 +82,11 @@ defmodule RabbitMQ.Connection do
     name = connection_name(connection_opts)
 
     heartbeat_interval_sec = Keyword.get(connection_opts, :heartbeat_interval_sec, 30)
-    max_channels = Keyword.get(connection_opts, :max_channels, 8)
+    # max_channels = Keyword.get(connection_opts, :max_channels, 8)
     reconnect_interval_ms = Keyword.get(connection_opts, :reconnect_interval_ms, 2500)
 
-    opts = [channel_max: max_channels, heartbeat: heartbeat_interval_sec]
+    # opts = [channel_max: max_channels, heartbeat: heartbeat_interval_sec]
+    opts = [heartbeat: heartbeat_interval_sec]
 
     amqp_url()
     |> Connection.open(name, opts)

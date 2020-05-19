@@ -35,12 +35,15 @@ defmodule RabbitMQTest.Producer do
 
   @amqp_url Application.get_env(:rabbit_mq, :amqp_url)
 
-  @connection __MODULE__.Connection
+  @data :crypto.strong_rand_bytes(2_000) |> Base.encode64()
   @exchange "#{__MODULE__}"
-  @max_overflow 2
+  @routing_key :crypto.strong_rand_bytes(16) |> Base.encode16()
+
+  @connection __MODULE__.Connection
+  @max_overflow :rand.uniform(5)
   @name __MODULE__
-  @publish_timeout 5_000
-  @worker_count 3
+  @publish_timeout :rand.uniform(500)
+  @worker_count :rand.uniform(8)
   @worker_pool __MODULE__.WorkerPool
 
   @base_opts [
@@ -57,40 +60,19 @@ defmodule RabbitMQTest.Producer do
     assert {:ok, channel} = Channel.open(connection)
 
     # Ensure we have a disposable exchange set up.
-    assert :ok = Exchange.declare(channel, @exchange, :topic, durable: false)
-
-    # Declare an exclusive queue and bind it to the above exchange.
-    {:ok, %{queue: queue}} = Queue.declare(channel, "", exclusive: true)
-    :ok = Queue.bind(channel, queue, @exchange, routing_key: "#")
-
-    # Declare opts with default publisher confirm callbacks.
-    opts =
-      @base_opts
-      |> Keyword.put(:handle_publisher_ack_confirms, fn _ -> :ok end)
-      |> Keyword.put(:handle_publisher_nack_confirms, fn _ -> :ok end)
+    assert :ok = Exchange.declare(channel, @exchange, :direct, durable: false)
 
     # Clean up after all tests have ran.
     on_exit(fn ->
-      # This queue would have been deleted automatically when the connection
-      # gets closed, however we manually delete it to avoid any naming conflicts
-      # in between tests, no matter how unlikely. Also, we ensure there are no
-      # messages left hanging in the queue.
-      assert {:ok, %{message_count: 0}} = Queue.delete(channel, queue)
-
       assert :ok = Exchange.delete(channel, @exchange)
       assert :ok = Channel.close(channel)
       assert :ok = Connection.close(connection)
     end)
 
-    [channel: channel, opts: opts, queue: queue]
+    [channel: channel, opts: @base_opts]
   end
 
-  setup %{channel: channel, queue: queue} do
-    on_exit(fn ->
-      # Ensure there are no messages in the queue as the next test is about to start.
-      assert true = Queue.empty?(channel, queue)
-    end)
-
+  setup do
     [correlation_id: UUID.uuid4()]
   end
 
@@ -104,8 +86,9 @@ defmodule RabbitMQTest.Producer do
              %{
                connection:
                  {:child, _connection_pid, :connection,
-                  {RabbitMQ.Connection, :start_link, [[max_channels: 3, name: @connection]]},
-                  :permanent, 5000, :worker, [RabbitMQ.Connection]},
+                  {RabbitMQ.Connection, :start_link,
+                   [[max_channels: @worker_count, name: @connection]]}, :permanent, 5000, :worker,
+                  [RabbitMQ.Connection]},
                worker_pool:
                  {:child, _worker_pool_pid, :worker_pool,
                   {:poolboy, :start_link,
@@ -127,22 +110,17 @@ defmodule RabbitMQTest.Producer do
 
     assert :ok = handle_publisher_ack_confirms.([{0, "routing_key", "data", []}])
     assert :ok = handle_publisher_nack_confirms.([{0, "routing_key", "data", []}])
-
-    # assert capture_log(fn ->
-    #          handle_publisher_ack_confirms.([{0, "routing_key", "data", []}])
-    #        end) =~ "Publisher acknowledged 0"
-
-    # assert capture_log(fn ->
-    #          handle_publisher_nack_confirms.([{1, "routing_key", "data", []}])
-    #        end) =~ "Publisher negatively acknowledged 1"
   end
 
   test "publishing is facilitated via poolboy", %{
     channel: channel,
     correlation_id: correlation_id,
-    opts: opts,
-    queue: queue
+    opts: opts
   } do
+    # Declare an exclusive queue.
+    {:ok, %{queue: queue}} = Queue.declare(channel, "", exclusive: true)
+    :ok = Queue.bind(channel, queue, @exchange, routing_key: @routing_key)
+
     assert {:ok, _pid} = start_supervised({Producer, opts})
 
     # Start receiving Consumer events.
@@ -153,9 +131,16 @@ defmodule RabbitMQTest.Producer do
 
     publish_opts = [correlation_id: correlation_id]
 
-    Producer.publish({"routing_key", "data", publish_opts}, @worker_pool, @publish_timeout)
+    assert {:ok, seq_no} =
+             Producer.publish({@routing_key, @data, publish_opts}, @worker_pool, @publish_timeout)
 
-    assert_receive({:basic_deliver, "data", %{correlation_id: ^correlation_id}})
+    assert_receive(
+      {:basic_deliver, @data,
+       %{
+         correlation_id: ^correlation_id,
+         routing_key: @routing_key
+       }}
+    )
 
     # Unsubscribe.
     Basic.cancel(channel, consumer_tag)
@@ -165,32 +150,13 @@ defmodule RabbitMQTest.Producer do
 
     # Ensure no further messages are received.
     refute_receive(_)
+
+    # This queue would have been deleted automatically when the connection
+    # gets closed, however we manually delete it to avoid any naming conflicts
+    # in between tests, no matter how unlikely. Also, we ensure there are no
+    # messages left hanging in the queue.
+    assert {:ok, %{message_count: 0}} = Queue.delete(channel, queue)
   end
-
-  # test "default publisher confirm callbacks are passed down to the workers", %{
-  #   opts: opts
-  # } do
-  #   assert {:ok, _pid} = start_supervised({Producer, opts})
-
-  #   assert {:state, _pid, workers, {[], []}, _ref, 3, 0, @max_overflow, :lifo} =
-  #            :sys.get_state(@worker_pool)
-
-  #   # Pick a random worker
-  #   worker = Enum.random(workers)
-
-  #   assert %{
-  #            handle_publisher_ack_confirms: handle_publisher_ack_confirms,
-  #            handle_publisher_nack_confirms: handle_publisher_nack_confirms
-  #          } = :sys.get_state(worker)
-
-  #   assert capture_log(fn ->
-  #            handle_publisher_ack_confirms.([{0, "routing_key", "data", []}])
-  #          end) =~ "Publisher acknowledged 0"
-
-  #   assert capture_log(fn ->
-  #            handle_publisher_nack_confirms.([{1, "routing_key", "data", []}])
-  #          end) =~ "Publisher negatively acknowledged 1"
-  # end
 
   test "optional publisher confirm callbacks are passed down to the workers", %{
     opts: opts
