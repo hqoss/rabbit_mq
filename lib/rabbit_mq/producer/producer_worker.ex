@@ -8,14 +8,15 @@ defmodule RabbitMQ.Producer.Worker do
 
   require Logger
 
-  @this_module __MODULE__
-  @worker_opts ~w(
+  @opts ~w(
     confirm_type
     connection
     exchange
     handle_publisher_ack_confirms
     handle_publisher_nack_confirms
   )a
+
+  @this_module __MODULE__
 
   defmodule State do
     @moduledoc """
@@ -43,16 +44,14 @@ defmodule RabbitMQ.Producer.Worker do
   ##############
 
   @doc """
-  Starts this module as a process via `GenServer.start_link/3`.
+  Starts this module as a process via `GenServer.start_link/2`.
 
-  Should always be used started via `Supervisor`.
+  Should always be started via `Supervisor`.
   """
   @spec start_link(keyword()) :: GenServer.on_start()
   def start_link(opts) do
-    name = Keyword.fetch!(opts, :name)
-    worker_opts = Keyword.take(opts, @worker_opts)
-
-    GenServer.start_link(@this_module, worker_opts, name: name)
+    opts = Keyword.take(opts, @opts)
+    GenServer.start_link(@this_module, opts)
   end
 
   ######################
@@ -60,17 +59,17 @@ defmodule RabbitMQ.Producer.Worker do
   ######################
 
   @impl true
-  def init(worker_opts) do
+  def init(opts) do
     # This is needed to invoke `terminate/2` when the parent process,
     # ideally a `Supervisor`, sends an exit signal.
     #
     # Read more @ https://hexdocs.pm/elixir/GenServer.html#c:terminate/2.
     Process.flag(:trap_exit, true)
 
-    connection = Keyword.fetch!(worker_opts, :connection)
-    exchange = Keyword.fetch!(worker_opts, :exchange)
-    handle_publisher_ack_confirms = Keyword.fetch!(worker_opts, :handle_publisher_ack_confirms)
-    handle_publisher_nack_confirms = Keyword.fetch!(worker_opts, :handle_publisher_nack_confirms)
+    connection = Keyword.fetch!(opts, :connection)
+    exchange = Keyword.fetch!(opts, :exchange)
+    handle_publisher_ack_confirms = Keyword.fetch!(opts, :handle_publisher_ack_confirms)
+    handle_publisher_nack_confirms = Keyword.fetch!(opts, :handle_publisher_nack_confirms)
 
     %Connection{} = connection = GenServer.call(connection, :get)
 
@@ -143,9 +142,15 @@ defmodule RabbitMQ.Producer.Worker do
   @impl true
   def handle_info({:DOWN, _reference, :process, _pid, reason}, %State{} = state) do
     Logger.warn("Worker channel process down; #{inspect(reason)}.")
-
     # Stop GenServer; will be restarted by Supervisor.
     {:stop, {:channel_down, reason}, state}
+  end
+
+  @impl true
+  def handle_info({:EXIT, from, reason}, %State{} = state) do
+    Logger.warn("Worker #{inspect(from)} exited; #{inspect(reason)}.")
+    # Stop GenServer; will be restarted by Supervisor.
+    {:stop, reason, state}
   end
 
   @doc """

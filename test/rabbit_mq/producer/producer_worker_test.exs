@@ -5,12 +5,11 @@ defmodule RabbitMQTest.Producer.Worker do
   use ExUnit.Case
 
   @amqp_url Application.get_env(:rabbit_mq, :amqp_url)
-  @exchange "#{__MODULE__}"
 
   @connection __MODULE__.Connection
-  @worker __MODULE__
+  @exchange "#{__MODULE__}"
 
-  @base_worker_opts [connection: @connection, exchange: @exchange, name: @worker]
+  @base_opts [connection: @connection, exchange: @exchange]
 
   setup_all do
     assert {:ok, _pid} = start_supervised({RabbitMQ.Connection, [name: @connection]})
@@ -25,9 +24,9 @@ defmodule RabbitMQTest.Producer.Worker do
     {:ok, %{queue: queue}} = Queue.declare(channel, "", exclusive: true)
     :ok = Queue.bind(channel, queue, @exchange, routing_key: "#")
 
-    # Declare worker_opts with default publisher confirm callbacks.
-    worker_opts =
-      @base_worker_opts
+    # Declare opts with default publisher confirm callbacks.
+    opts =
+      @base_opts
       |> Keyword.put(:handle_publisher_ack_confirms, fn _ -> :ok end)
       |> Keyword.put(:handle_publisher_nack_confirms, fn _ -> :ok end)
 
@@ -44,7 +43,7 @@ defmodule RabbitMQTest.Producer.Worker do
       assert :ok = Connection.close(connection)
     end)
 
-    [channel: channel, queue: queue, worker_opts: worker_opts]
+    [channel: channel, opts: opts, queue: queue]
   end
 
   setup %{channel: channel, queue: queue} do
@@ -57,9 +56,9 @@ defmodule RabbitMQTest.Producer.Worker do
   end
 
   test "start_link/1 starts a worker and establishes a dedicated channel", %{
-    worker_opts: worker_opts
+    opts: opts
   } do
-    assert {:ok, pid} = start_supervised({Worker, worker_opts})
+    assert {:ok, pid} = start_supervised({Worker, opts})
 
     assert %Worker.State{
              channel: %Channel{} = channel,
@@ -73,10 +72,10 @@ defmodule RabbitMQTest.Producer.Worker do
   test "publishes a message", %{
     channel: channel,
     correlation_id: correlation_id,
-    queue: queue,
-    worker_opts: worker_opts
+    opts: opts,
+    queue: queue
   } do
-    assert {:ok, pid} = start_supervised({Worker, worker_opts})
+    assert {:ok, pid} = start_supervised({Worker, opts})
 
     # Start receiving Consumer events.
     assert {:ok, consumer_tag} = Basic.consume(channel, queue)
@@ -84,9 +83,9 @@ defmodule RabbitMQTest.Producer.Worker do
     # This will always be the first message received by the process.
     assert_receive({:basic_consume_ok, %{consumer_tag: ^consumer_tag}})
 
-    opts = [correlation_id: correlation_id]
+    publish_opts = [correlation_id: correlation_id]
 
-    assert {:ok, seq_no} = GenServer.call(@worker, {:publish, "routing_key", "data", opts})
+    assert {:ok, seq_no} = GenServer.call(pid, {:publish, "routing_key", "data", publish_opts})
 
     assert_receive(
       {:basic_deliver, "data",
@@ -109,12 +108,12 @@ defmodule RabbitMQTest.Producer.Worker do
   end
 
   test "[only item] publisher confirm event confirms a single outstanding confirm", %{
-    worker_opts: worker_opts
+    opts: opts
   } do
-    assert {:ok, pid} = start_supervised({Worker, worker_opts})
+    assert {:ok, pid} = start_supervised({Worker, opts})
 
     state =
-      @worker
+      pid
       |> :sys.get_state()
       |> Map.put(:outstanding_confirms, [{42, nil, nil, nil}])
 
@@ -125,12 +124,12 @@ defmodule RabbitMQTest.Producer.Worker do
   end
 
   test "[first item] publisher confirm event confirms a single outstanding confirm", %{
-    worker_opts: worker_opts
+    opts: opts
   } do
-    assert {:ok, pid} = start_supervised({Worker, worker_opts})
+    assert {:ok, pid} = start_supervised({Worker, opts})
 
     state =
-      @worker
+      pid
       |> :sys.get_state()
       |> Map.put(:outstanding_confirms, [
         {42, nil, nil, nil},
@@ -144,12 +143,12 @@ defmodule RabbitMQTest.Producer.Worker do
   end
 
   test "[somewhere in the list] publisher confirm event confirms a single outstanding confirm", %{
-    worker_opts: worker_opts
+    opts: opts
   } do
-    assert {:ok, pid} = start_supervised({Worker, worker_opts})
+    assert {:ok, pid} = start_supervised({Worker, opts})
 
     state =
-      @worker
+      pid
       |> :sys.get_state()
       |> Map.put(:outstanding_confirms, [
         {43, nil, nil, nil},
@@ -167,12 +166,12 @@ defmodule RabbitMQTest.Producer.Worker do
   end
 
   test "[first or only item] publisher confirm event confirms multiple outstanding confirms", %{
-    worker_opts: worker_opts
+    opts: opts
   } do
-    assert {:ok, pid} = start_supervised({Worker, worker_opts})
+    assert {:ok, pid} = start_supervised({Worker, opts})
 
     state =
-      @worker
+      pid
       |> :sys.get_state()
       |> Map.put(:outstanding_confirms, [
         {42, nil, nil, nil},
@@ -187,11 +186,11 @@ defmodule RabbitMQTest.Producer.Worker do
   end
 
   test "[somewhere in the list] publisher confirm event confirms multiple outstanding confirms",
-       %{worker_opts: worker_opts} do
-    assert {:ok, pid} = start_supervised({Worker, worker_opts})
+       %{opts: opts} do
+    assert {:ok, pid} = start_supervised({Worker, opts})
 
     state =
-      @worker
+      pid
       |> :sys.get_state()
       |> Map.put(:outstanding_confirms, [
         {43, nil, nil, nil},
@@ -205,19 +204,19 @@ defmodule RabbitMQTest.Producer.Worker do
     assert [{43, nil, nil, nil}] = state.outstanding_confirms
   end
 
-  test "publisher acknowledgement triggers corresponding callback", %{worker_opts: worker_opts} do
+  test "publisher acknowledgement triggers corresponding callback", %{opts: opts} do
     test_pid = self()
 
     assert {:ok, pid} =
              start_supervised(
                {Worker,
-                Keyword.put(worker_opts, :handle_publisher_ack_confirms, fn confirms ->
+                Keyword.put(opts, :handle_publisher_ack_confirms, fn confirms ->
                   send(test_pid, confirms)
                 end)}
              )
 
     state =
-      @worker
+      pid
       |> :sys.get_state()
       |> Map.put(:outstanding_confirms, [{42, nil, nil, nil}])
 
@@ -228,20 +227,20 @@ defmodule RabbitMQTest.Producer.Worker do
   end
 
   test "publisher negative acknowledgement triggers corresponding callback", %{
-    worker_opts: worker_opts
+    opts: opts
   } do
     test_pid = self()
 
     assert {:ok, pid} =
              start_supervised(
                {Worker,
-                Keyword.put(worker_opts, :handle_publisher_nack_confirms, fn confirms ->
+                Keyword.put(opts, :handle_publisher_nack_confirms, fn confirms ->
                   send(test_pid, confirms)
                 end)}
              )
 
     state =
-      @worker
+      pid
       |> :sys.get_state()
       |> Map.put(:outstanding_confirms, [{42, nil, nil, nil}])
 
@@ -252,11 +251,11 @@ defmodule RabbitMQTest.Producer.Worker do
   end
 
   test "when a monitored process dies, an instruction to stop the GenServer is returned", %{
-    worker_opts: worker_opts
+    opts: opts
   } do
-    assert {:ok, pid} = start_supervised({Worker, worker_opts})
+    assert {:ok, pid} = start_supervised({Worker, opts})
 
-    state = :sys.get_state(@worker)
+    state = :sys.get_state(pid)
 
     assert {:stop, {:channel_down, :failure}, state} =
              Worker.handle_info({:DOWN, :reference, :process, self(), :failure}, state)
