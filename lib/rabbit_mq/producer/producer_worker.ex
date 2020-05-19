@@ -146,13 +146,6 @@ defmodule RabbitMQ.Producer.Worker do
     {:stop, {:channel_down, reason}, state}
   end
 
-  @impl true
-  def handle_info({:EXIT, from, reason}, %State{} = state) do
-    Logger.warn("Worker #{inspect(from)} exited; #{inspect(reason)}.")
-    # Stop GenServer; will be restarted by Supervisor.
-    {:stop, reason, state}
-  end
-
   @doc """
   Invoked when the server is about to exit. It should do any cleanup required.
   See https://hexdocs.pm/elixir/GenServer.html#c:terminate/2 for more details.
