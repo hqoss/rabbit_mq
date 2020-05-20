@@ -79,6 +79,7 @@ defmodule MQ.MixProject do
   defp deps do
     [
       {:amqp, "~> 1.4"},
+      {:poolboy, "~> 1.5.2"},
       # Dev/Test-only deps
       {:benchee, "~> 1.0", only: [:dev, :test], runtime: false},
       {:credo, "~> 1.4", only: [:dev, :test], runtime: false},
